@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Relatório SRAG — UF SP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; margin: 24px; color: #111; }
+    h1 { margin-bottom: 0.2rem; }
+    .sub { color: #666; margin-top: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; margin: 16px 0 24px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+    .kpi { font-size: 1.8rem; font-weight: 700; margin: 8px 0; }
+    .muted { color: #666; font-size: 0.9rem; }
+    img { max-width: 100%; height: auto; border: 1px solid #eee; border-radius: 12px; }
+    footer { margin-top: 24px; color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Relatório SRAG — UF SP</h1>
+  <p class="sub">Gerado em 14/10/2025 07:50</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="muted">Variação de casos (mês atual vs anterior)</div>
+      <div class="kpi">
+        
+          -98.1%
+        
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted">Taxa de mortalidade (mês mais recente)</div>
+      <div class="kpi">
+        
+          1.18%
+        
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted">Taxa de UTI (mês mais recente)</div>
+      <div class="kpi">
+        
+          21.18%
+        
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted">Taxa de vacinação (proxy nos casos)</div>
+      <div class="kpi">
+        
+          51.76%
+        
+      </div>
+    </div>
+  </div>
+
+  <h2>Casos — últimos 30 dias</h2>
+  
+    <img src="..\charts\casos_30d.png" alt="Casos diários (30 dias)">
+  
+
+  <h2>Casos — últimos 12 meses</h2>
+  
+    <img src="..\charts\casos_12m.png" alt="Casos mensais (12 meses)">
+  
+
+  <h2>Contexto de notícias</h2>
+  <p>O panorama da Síndrome Respiratória Aguda Grave (SRAG) no Brasil apresenta uma situação complexa, com um aumento expressivo de casos, conforme alertado pelo InfoGripe da Fiocruz. Até abril, foram registrados mais de 31 mil casos suspeitos, com 72,5% dos óbitos relacionados à influenza A, o que destaca a relevância dessa cepa viral na mortalidade associada à SRAG (Agência Brasil). No entanto, é importante considerar que, apesar da recente queda nos casos de SRAG, essa redução pode ser influenciada por fatores sazonais e pela variabilidade nos dados de notificação (Agência Fiocruz de Notícias). A interpretação desses dados deve ser feita com cautela, pois a subnotificação e a diversidade de agentes etiológicos podem impactar a compreensão do cenário epidemiológico. Fontes: Agência Fiocruz de Notícias, Agência Brasil, CNN Brasil.</p>
+
+  <footer>Fonte: OpenDataSUS (SRAG). Este relatório é gerado automaticamente.</footer>
+</body>
+</html>

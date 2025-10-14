@@ -209,3 +209,18 @@ __marimo__/
 
 # Projects
 desafio.md
+
+# dados grandes / artefatos locais
+data/**/*.csv
+data/**/*.parquet
+data/**/*.sqlite
+data/**/*.db
+resources/reports/*.pdf
+resources/charts/*.png
+resources/json/*.json
+# mantenha diretórios vazios
+!data/.gitkeep
+!resources/.gitkeep
+# excetua amostras pequenas
+!data/sample/**
+!data/srag.sqlite
