@@ -5,12 +5,15 @@ import re
 from dotenv import find_dotenv, load_dotenv
 import pytest
 
+# Quando RUN_LIVE_API_TESTS=1, exigimos chaves reais e não vazias.
+RUN_LIVE = os.getenv("RUN_LIVE_API_TESTS", "0") == "1"
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _load_env() -> None:
     """
-    Carrega o .env uma única vez para toda a suíte sem sobrescrever
-    variáveis já existentes no ambiente.
+    Carrega o .env uma única vez (sem sobrescrever variáveis já definidas).
+    No CI, o workflow cria um .env mínimo – então mantemos a asserção.
     """
     env_file = find_dotenv(filename=".env", usecwd=True)
     assert env_file, "Arquivo .env não encontrado no diretório do projeto."
@@ -19,6 +22,7 @@ def _load_env() -> None:
 
 # ------------------------------
 # Presenças básicas no .env
+# (variáveis core: sempre não vazias)
 # ------------------------------
 @pytest.mark.parametrize(
     "var_name",
@@ -26,8 +30,6 @@ def _load_env() -> None:
         "DB_PATH",
         "UF_INICIAL",
         "INGEST_MODE",
-        "OPENAI_API_KEY",
-        "SERPER_API_KEY",
         "NEWS_QUERY",
     ],
 )
@@ -52,21 +54,42 @@ def test_uf_inicial_format():
 
 
 # ------------------------------
-# Chaves (checagens leves)
+# Chaves de APIs externas
+# (flexíveis no CI/offline; estritas em modo live)
 # ------------------------------
+@pytest.mark.parametrize("var_name", ["OPENAI_API_KEY", "SERPER_API_KEY"])
+def test_external_keys_present_or_required_when_live(var_name: str):
+    """
+    - OFFLINE/CI (RUN_LIVE_API_TESTS != 1): a variável deve EXISTIR,
+      mas pode estar vazia ("").
+    - LIVE (RUN_LIVE_API_TESTS = 1): a variável deve estar NÃO VAZIA.
+    """
+    val = os.getenv(var_name)
+    assert val is not None, f"Variável {var_name} ausente no ambiente/.env"
+
+    if RUN_LIVE:
+        assert val.strip() != "", f"{var_name} vazia com RUN_LIVE_API_TESTS=1"
+
+
 def test_api_keys_look_sane():
+    """
+    Apenas em modo LIVE validamos formato mínimo das chaves.
+    No CI/offline não exigimos conteúdo real.
+    """
     openai_key = os.getenv("OPENAI_API_KEY", "")
     serper_key = os.getenv("SERPER_API_KEY", "")
+
+    if not RUN_LIVE:
+        # Só garantimos que existem (podem estar vazias para evitar chamadas externas no CI)
+        assert openai_key is not None and serper_key is not None
+        return
+
     assert (
-        len(openai_key) >= 15 and "coloque" not in openai_key.lower()
+        len(openai_key.strip()) >= 15 and "coloque" not in openai_key.lower()
     ), "OPENAI_API_KEY parece placeholder."
     assert (
-        len(serper_key) >= 10 and "coloque" not in serper_key.lower()
+        len(serper_key.strip()) >= 10 and "coloque" not in serper_key.lower()
     ), "SERPER_API_KEY parece placeholder."
-
-
-def test_news_query_nonempty():
-    assert os.getenv("NEWS_QUERY", "").strip() != "", "NEWS_QUERY não deve estar vazia."
 
 
 # ------------------------------
