@@ -27,13 +27,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-      # Ordenação de imports (isort-like)
       - name: Ruff (import order)
         run: ruff check --select I --diff .
-      # Lint
       - name: Ruff (lint)
         run: ruff check .
-      # Formatação (substitui Black)
       - name: Ruff (format check)
         run: ruff format --check
 
@@ -44,25 +41,49 @@ jobs:
       matrix:
         python-version: ["3.13", "3.12"]
     env:
-      RUN_LIVE_API_TESTS: "0"  # nunca chama serviços externos no CI
-      OPENAI_API_KEY: ""
+      RUN_LIVE_API_TESTS: "0"  # evita chamadas externas no CI
+      OPENAI_API_KEY: ""       # chaves vazias (failsafe extra)
       SERPER_API_KEY: ""
-      MPLBACKEND: Agg         # evita problemas de display no matplotlib
+      MPLBACKEND: Agg          # backend headless do matplotlib
       TZ: UTC
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
           cache-dependency-path: requirements.txt
+
+      - name: Create .env (CI defaults)
+        run: |
+          cat > .env << 'EOF'
+          DB_PATH="data/srag.sqlite"
+          UF_INICIAL="SP"
+          INGEST_MODE="auto"         # auto|local|remote
+          NEWS_QUERY="SRAG Brasil"
+          OPENAI_API_KEY=""
+          SERPER_API_KEY=""
+          API_TIMEOUT="10"
+          API_MAX_RETRIES="0"
+          API_BACKOFF_BASE="0.5"
+          LOG_DIR="resources/json"
+          LOG_FILE="resources/json/events.jsonl"
+          LOG_LEVEL="INFO"
+          LOG_SANITIZE="1"
+          SRAG_URLS=""
+          EOF
+          mkdir -p resources/reports resources/json resources/charts data/raw
+
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+
       - name: Run tests
         run: pytest -q --maxfail=1 --disable-warnings -rA
+
       - name: Upload report artifacts (optional)
         if: always()
         uses: actions/upload-artifact@v4
