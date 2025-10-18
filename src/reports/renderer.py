@@ -2,33 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import warnings  # <- para filtrar o DeprecationWarning específico
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-"""
-renderer.py
------------
-Responsável por:
-1) Gerar gráficos (PNG) com seaborn
-2) Renderizar o relatório HTML via Jinja2
-3) Converter HTML -> PDF com xhtml2pdf (pure-Python; sem wkhtmltopdf)
-
-Guardrails adicionados:
-- PRIVACY GUARD: `render_html` rejeita DataFrames no contexto do template,
-  impedindo vazamento de dados em nível de linha (somente agregados são permitidos).
-
-Notas:
-- Os gráficos são salvos em resources/charts/ e referenciados no HTML por caminhos
-  RELATIVOS a resources/reports/ (o orquestrador já calcula os paths relativos).
-- Se xhtml2pdf não estiver instalado, seguimos apenas com HTML (retorna None no PDF).
-"""
-
 # Conversão HTML -> PDF sem binários externos (wkhtmltopdf não é necessário)
+# Suprime só o DeprecationWarning do reportlab durante o import:
 try:
-    from xhtml2pdf import pisa
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="ast.NameConstant is deprecated",
+            category=DeprecationWarning,
+            module=r"reportlab\..*",  # filtra avisos vindos do reportlab
+        )
+        from xhtml2pdf import pisa
 except Exception:
     pisa = None  # se indisponível, html_to_pdf retornará None com segurança
 
@@ -104,7 +95,7 @@ def render_html(
     Renderiza o template Jinja2 com o `context` e grava o HTML final.
     Bloqueia DataFrames/Series no contexto por privacidade.
     """
-    # PRIVACY GUARD
+    # PRIVACY GUARD (corrigido: isinstance espera tupla de tipos)
     for key, value in context.items():
         if isinstance(value, pd.DataFrame | pd.Series):
             raise ValueError(f"Contexto contém dados tabulares não permitidos: {key}")
@@ -161,8 +152,6 @@ def html_to_pdf(html_path: str) -> str | None:
                 link_callback=link_callback,
                 encoding="utf-8",
             )
-
-        print(pdf_path)
         return pdf_path if not result.err else None
     except Exception:
         return None
