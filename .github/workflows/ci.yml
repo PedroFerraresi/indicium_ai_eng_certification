@@ -16,64 +16,53 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-
-      - name: Install dev deps
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dev deps (Ruff)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-
-      - name: Ruff
+      # Ordenação de imports (isort-like)
+      - name: Ruff (import order)
+        run: ruff check --select I --diff .
+      # Lint
+      - name: Ruff (lint)
         run: ruff check .
-
-      - name: Black
-        run: black --check .
-
-      - name: isort
-        run: isort --check-only .
+      # Formatação (substitui Black)
+      - name: Ruff (format check)
+        run: ruff format --check
 
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11"]
     env:
-      RUN_LIVE_API_TESTS: "0"   # evita chamadas externas
-      OPENAI_API_KEY: ""        # chaves vazias por segurança
+      RUN_LIVE_API_TESTS: "0"  # nunca chama serviços externos no CI
+      OPENAI_API_KEY: ""
       SERPER_API_KEY: ""
-      MPLBACKEND: Agg           # backend headless para matplotlib
-      TZ: UTC                   # datas/horários determinísticos
+      MPLBACKEND: Agg         # evita problemas de display no matplotlib
+      TZ: UTC
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
           cache-dependency-path: requirements.txt
-
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+          pip install -r requirements.txt -r requirements-dev.txt
       - name: Run tests
-        run: |
-          pytest -q --maxfail=1 --disable-warnings -rA
-
+        run: pytest -q --maxfail=1 --disable-warnings -rA
       - name: Upload report artifacts (optional)
         if: always()
         uses: actions/upload-artifact@v4
