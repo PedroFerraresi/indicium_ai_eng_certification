@@ -1,155 +1,187 @@
 from __future__ import annotations
 """
-Agente orquestrador (LangGraph):
+Orquestrador do pipeline (LangGraph).
 
-Fluxo em nós:
+Fluxo de nós:
   ingest  -> metrics -> charts -> news -> report -> END
 
-- 'ingest'  : baixa/ingere dados do SRAG e cria tabelas no SQLite.
-- 'metrics' : calcula as quatro métricas + séries temporais.
-- 'charts'  : plota e salva gráficos (30 dias e 12 meses).
-- 'news'    : busca notícias e resume com LLM (explicabilidade).
-- 'report'  : renderiza HTML (e PDF, se disponível) e registra logs.
+- 'ingest'  : decide local/remoto e materializa tabelas no SQLite.
+- 'metrics' : lê o banco e calcula KPIs + séries (30d/12m).
+- 'charts'  : gera PNGs com seaborn.
+- 'news'    : busca notícias (Serper) e resume (OpenAI) com fallback.
+- 'report'  : renderiza HTML (Jinja2) e tenta gerar PDF (xhtml2pdf).
 
-Este grafo mantém a parte "numérica" determinística e delega apenas
-a síntese textual das notícias ao LLM, reduzindo riscos de alucinação.
+Observabilidade:
+- Cada nó é envolvido por `audit_span(...)` que loga início/fim/erro,
+  duração (ms) e um `run_id` para rastreabilidade ponta-a-ponta.
 """
 
 import os
-from typing import TypedDict, Optional
-from langgraph.graph import StateGraph, END
+from typing import TypedDict, Optional, Any
 from datetime import datetime
+from langgraph.graph import StateGraph, END
 
-# Banco de dados (SQLite)
+# Dados/indicadores (ingestão + métricas)
 from src.tools.database_orchestrator_sqlite import ingest as ingest_csvs, compute_metrics
 
-# Ferramenta de notícias (Serper + OpenAI)
+# Notícias (busca + sumarização)
 from src.tools.news import search_news, summarize_news
 
-# Renderização de relatório e gráficos
+# Relatório e gráficos
 from src.reports.renderer import plot_series, render_html, html_to_pdf
 
-# Logging estruturado (JSON)
-from src.utils.logging import log_event
+# Auditoria estruturada
+from src.utils.audit import new_run_id, audit_span, log_kv
 
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     """
-    Estado compartilhado do grafo (imutável entre nós).
+    Estado compartilhado do grafo.
+    `total=False` => as chaves podem ser adicionadas conforme o fluxo avança.
     """
-    uf: str
-    metrics: dict
-    news_items: list
-    news_summary: str
-    chart_30d: Optional[str]
-    chart_12m: Optional[str]
-    html_path: str
-    pdf_path: Optional[str]
+    run_id: str                 # id único desta execução (para auditoria)
+    uf: str                     # UF a ser analisada
+    metrics: dict[str, Any]     # dicionário com KPIs e DataFrames
+    news_items: list            # lista de itens de notícia (dicts do Serper)
+    news_summary: str           # resumo textual das notícias
+    chart_30d: Optional[str]    # caminho do PNG de 30 dias (se existir)
+    chart_12m: Optional[str]    # caminho do PNG de 12 meses (se existir)
+    html_path: str              # caminho do HTML renderizado
+    pdf_path: Optional[str]     # caminho do PDF gerado (ou None)
 
 
 def node_ingest(state: AgentState):
     """
-    Nó 1: Ingestão de dados + materialização das tabelas no SQLite.
+    Nó 1: Ingestão e preparação do banco.
+    - Respeita INGEST_MODE=auto|local|remote
+    - Cria/atualiza srag_staging/base/daily/monthly no SQLite
     """
-    ingest_csvs()
-    log_event("ingest_done", {"uf": state["uf"]})
+    run_id = state["run_id"]
+    mode = os.getenv("INGEST_MODE", "auto")
+    # Span de auditoria: registra início/fim/erro e duração do passo
+    with audit_span("ingest", run_id, node="ingest", ingest_mode=mode):
+        ingest_csvs()
+        # registra saída “leve” (sem logar conteúdo pesado)
+        log_kv(run_id, "ingest.output", db=os.getenv("DB_PATH"))
     return state
 
 
 def node_metrics(state: AgentState):
     """
-    Nó 2: Cálculo das métricas e séries temporais.
+    Nó 2: Cálculo de métricas e séries temporais (determinístico).
+    - Lê o SQLite e retorna KPIs + DataFrames (series_30d/series_12m)
+    - Loga apenas um resumo para não inchar o arquivo de auditoria
     """
-    m = compute_metrics(uf=state["uf"])
-    state["metrics"] = m
+    run_id = state["run_id"]
+    uf = state["uf"]
+    with audit_span("metrics", run_id, node="metrics", uf=uf):
+        m = compute_metrics(uf)
 
-    # Loga apenas o tamanho das séries para evitar JSON muito grande
-    log_event("metrics", {
-        **{k: v for k, v in m.items() if k not in ("series_30d", "series_12m")},
-        "series_30d_len": len(m["series_30d"]),
-        "series_12m_len": len(m["series_12m"]),
-    })
+        # Resumo ‘leve’ das métricas para auditoria
+        summary = {
+            "increase_rate": m["increase_rate"],
+            "mortality_rate": m["mortality_rate"],
+            "icu_rate": m["icu_rate"],
+            "vaccination_rate": m["vaccination_rate"],
+            "rows_30d": int(m["series_30d"].shape[0]),
+            "rows_12m": int(m["series_12m"].shape[0]),
+        }
+        log_kv(run_id, "metrics.summary", **summary)
+
+        state["metrics"] = m
     return state
 
 
 def node_charts(state: AgentState):
     """
-    Nó 3: Geração de gráficos (PNG) a partir das séries calculadas.
+    Nó 3: Geração de gráficos (PNG) com seaborn.
+    - Salva arquivos em resources/charts/
+    - Guarda os caminhos no estado para o relatório usar
     """
-    m = state["metrics"]
-    os.makedirs("resources/charts", exist_ok=True)
+    run_id = state["run_id"]
+    with audit_span("charts", run_id, node="charts"):
+        m = state["metrics"]
+        os.makedirs("resources/charts", exist_ok=True)
 
-    c30 = "resources/charts/casos_30d.png"
-    c12 = "resources/charts/casos_12m.png"
+        c30 = "resources/charts/casos_30d.png"
+        c12 = "resources/charts/casos_12m.png"
 
-    if len(m["series_30d"]) > 0:
-        plot_series(m["series_30d"], "day", "cases", "Casos diários (30d)", c30)
-        state["chart_30d"] = c30
+        # Só plota se houver dados suficientes
+        if len(m["series_30d"]) > 0:
+            plot_series(m["series_30d"], "day", "cases", "Casos diários (30d)", c30)
+            state["chart_30d"] = c30
 
-    if len(m["series_12m"]) > 0:
-        plot_series(m["series_12m"], "month", "cases", "Casos mensais (12m)", c12)
-        state["chart_12m"] = c12
+        if len(m["series_12m"]) > 0:
+            plot_series(m["series_12m"], "month", "cases", "Casos mensais (12m)", c12)
+            state["chart_12m"] = c12
 
-    log_event("charts", {"chart_30d": state.get("chart_30d"), "chart_12m": state.get("chart_12m")})
+        log_kv(run_id, "charts.output",
+               chart_30d=state.get("chart_30d"),
+               chart_12m=state.get("chart_12m"))
     return state
 
 
 def node_news(state: AgentState):
     """
     Nó 4: Busca e sumarização de notícias.
-    Em qualquer erro de API/cota, gera um texto seguro e continua.
+    - Busca itens no Serper (NewsFetcherTool)
+    - Sumariza com LLM (OpenAI). Em caso de erro/quota, usa fallback.
+    - Nunca quebra o pipeline.
     """
+    run_id = state["run_id"]
     q = os.getenv("NEWS_QUERY", "SRAG Brasil")
-    try:
-        items = search_news(q, num=5)
-    except Exception as e:
-        items = []
-    state["news_items"] = items
+    with audit_span("news", run_id, node="news", query=q):
+        # Busca com fallback (rede/servidor pode falhar)
+        try:
+            items = search_news(q, num=5)
+        except Exception:
+            items = []
+        log_kv(run_id, "news.items", count=len(items))
 
-    try:
-        state["news_summary"] = summarize_news(items) if items else "Sem notícias recentes encontradas."
-    except Exception as e:
-        state["news_summary"] = "Resumo de notícias indisponível no momento."
-    log_event("news", {"query": q, "items_len": len(items)})
+        # Sumarização com fallback (quota 429, etc.)
+        try:
+            # summarize_news aceita run_id opcional para auditar uso do LLM
+            summary = summarize_news(items, run_id=run_id) if items else "Sem notícias recentes encontradas."
+        except Exception:
+            summary = "Resumo de notícias indisponível no momento."
+
+        log_kv(run_id, "news.summary", length=len(summary))
+        state["news_items"] = items
+        state["news_summary"] = summary
     return state
 
 
 def node_report(state: AgentState):
     """
-    Nó 5: Renderização do relatório final (HTML e, se possível, PDF).
-    Usa caminhos relativos a 'resources/reports' para que as imagens carreguem.
+    Nó 5: Renderização do relatório final.
+    - Monta o contexto para o template Jinja2 (KPIs + caminhos das imagens)
+    - Gera HTML e tenta converter para PDF (xhtml2pdf)
+    - Caminhos relativos garantem que as imagens carreguem no HTML
     """
-    m = state["metrics"]
+    run_id = state["run_id"]
+    with audit_span("report", run_id, node="report"):
+        ctx = {
+            "uf": state["uf"],
+            # KPIs numéricos usados como indicadores na capa
+            **{k: state["metrics"][k] for k in ["increase_rate", "mortality_rate", "icu_rate", "vaccination_rate"]},
+            # as imagens são referenciadas relativamente ao diretório do HTML
+            "chart_30d": os.path.relpath(state.get("chart_30d"), start="resources/reports") if state.get("chart_30d") else None,
+            "chart_12m": os.path.relpath(state.get("chart_12m"), start="resources/reports") if state.get("chart_12m") else None,
+            "news_summary": state.get("news_summary", "Sem notícias recentes encontradas."),
+            "now": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        }
+        html = render_html(ctx)
+        pdf = html_to_pdf(html)
 
-    def _rel(p: str | None) -> str | None:
-        if not p:
-            return None
-        base = os.path.join("resources", "reports")
-        return os.path.relpath(p, start=base)  # ex.: ../charts/casos_30d.png
-
-    ctx = {
-        "uf": state["uf"],
-        "increase_rate": m["increase_rate"],
-        "mortality_rate": m["mortality_rate"],
-        "icu_rate": m["icu_rate"],
-        "vaccination_rate": m["vaccination_rate"],
-        "chart_30d": _rel(state.get("chart_30d")),
-        "chart_12m": _rel(state.get("chart_12m")),
-        "news_summary": state.get("news_summary", "Sem notícias recentes encontradas."),
-        "now": datetime.now().strftime("%d/%m/%Y %H:%M"),
-    }
-
-    html = render_html(ctx)
-    state["html_path"] = html
-    state["pdf_path"] = html_to_pdf(html)
-
-    log_event("report", {"html": html, "pdf": state["pdf_path"]})
+        log_kv(run_id, "report.output", html=html, pdf=pdf)
+        state["html_path"] = html
+        state["pdf_path"] = pdf
     return state
 
 
 def build_graph():
     """
-    Define o grafo de estados e a ordem de execução dos nós.
+    Define o grafo de estados (nós + arestas) e compila.
     """
     g = StateGraph(AgentState)
     g.add_node("ingest", node_ingest)
@@ -166,21 +198,15 @@ def build_graph():
     g.add_edge("report", END)
     return g.compile()
 
-
 def run_pipeline(uf: str):
     """
-    Função auxiliar para executar o grafo inteiro com uma UF.
-    Retorna o estado final (com caminhos dos arquivos gerados).
+    Executa o grafo para a UF informada e retorna o estado final.
+    - Gera um `run_id` único para auditar a execução inteira.
     """
-    graph = build_graph()
-    state: AgentState = {
-        "uf": uf,
-        "metrics": {},
-        "news_items": [],
-        "news_summary": "",
-        "chart_30d": None,
-        "chart_12m": None,
-        "html_path": "",
-        "pdf_path": None
-    }
-    return graph.invoke(state)
+    run_id = new_run_id()
+    state: AgentState = {"uf": uf, "run_id": run_id}
+    with audit_span("run", run_id, node="orchestrator", uf=uf):
+        return graph.invoke(state)
+
+# Compila o grafo uma única vez ao importar o módulo
+graph = build_graph()
