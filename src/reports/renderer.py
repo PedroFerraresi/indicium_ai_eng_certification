@@ -7,16 +7,18 @@ Responsável por:
 2) Renderizar o relatório HTML via Jinja2
 3) Converter HTML -> PDF com xhtml2pdf (pure-Python; sem wkhtmltopdf)
 
+Guardrails adicionados:
+- PRIVACY GUARD: `render_html` rejeita DataFrames no contexto do template,
+  impedindo vazamento de dados em nível de linha (somente agregados são permitidos).
+
 Notas:
-- Os gráficos são salvos em resources/charts.
-- O HTML é gravado em resources/reports/relatorio.html.
-- O orquestrador passa caminhos RELATIVOS para as imagens, então o
-  template consegue encontrar ../charts/*.png mesmo fora do navegador.
+- Os gráficos são salvos em resources/charts/ e referenciados no HTML por caminhos
+  RELATIVOS a resources/reports/ (o orquestrador já calcula os paths relativos).
+- Se xhtml2pdf não estiver instalado, seguimos apenas com HTML (retorna None no PDF).
 """
 
-import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional  # <- inclui Optional para compatibilidade 3.9
 
 import pandas as pd
 import seaborn as sns
@@ -24,17 +26,16 @@ import matplotlib.pyplot as plt
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-# Conversão HTML -> PDF sem binários externos (wkhtmltopdf não necessário)
+# Conversão HTML -> PDF sem binários externos (wkhtmltopdf não é necessário)
 try:
     from xhtml2pdf import pisa
 except Exception:
-    pisa = None  # Se não estiver instalado, html_to_pdf retorna None com segurança.
+    pisa = None  # se indisponível, html_to_pdf retornará None com segurança
 
-
-# === Diretórios padrão ===
-TEMPLATES_DIR = Path("src/reports/templates")      # onde está report.html.j2
-REPORTS_DIR = Path("resources/reports")            # onde salvamos o HTML/PDF
-CHARTS_DIR = Path("resources/charts")              # onde salvamos os PNGs
+# === Diretórios padrão (mantidos fixos para compatibilidade com o projeto) ===
+TEMPLATES_DIR = Path("src/reports/templates")   # onde está report.html.j2
+REPORTS_DIR   = Path("resources/reports")       # onde salvamos o HTML/PDF
+CHARTS_DIR    = Path("resources/charts")        # onde salvamos os PNGs
 
 # Garante existência dos diretórios de artefatos
 for _p in (REPORTS_DIR, CHARTS_DIR):
@@ -42,7 +43,6 @@ for _p in (REPORTS_DIR, CHARTS_DIR):
 
 
 # === 1) GRÁFICOS COM SEABORN =================================================
-
 def plot_series(
     df: pd.DataFrame,
     x_col: str,
@@ -68,6 +68,10 @@ def plot_series(
     if x_col not in df.columns or y_col not in df.columns:
         raise ValueError(f"plot_series: DataFrame não contém {x_col} e/ou {y_col}.")
 
+    # (Ajuste 1) Falhar explicitamente se não houver dados a plotar
+    if df.empty:
+        raise ValueError("plot_series: DataFrame vazio — nada para plotar.")
+
     # Cópia defensiva (não altera o df original)
     data = df[[x_col, y_col]].copy()
 
@@ -75,7 +79,7 @@ def plot_series(
     try:
         data[x_col] = pd.to_datetime(data[x_col])
     except Exception:
-        pass
+        pass  # se não for data, plotamos como categórico/numérico mesmo
 
     # Ordena X para evitar “zig-zag” visual
     data = data.sort_values(by=x_col)
@@ -88,7 +92,7 @@ def plot_series(
 
     # Linha principal
     sns.lineplot(data=data, x=x_col, y=y_col, ax=ax)
-    # Pontos por cima da linha (ajuda a ver datas individuais)
+    # Pontos por cima da linha (ajuda a ver observações individuais)
     sns.scatterplot(data=data, x=x_col, y=y_col, ax=ax)
 
     ax.set_title(title)
@@ -109,7 +113,6 @@ def plot_series(
 
 
 # === 2) RENDERIZAÇÃO DO HTML (Jinja2) ========================================
-
 def _jinja_env() -> Environment:
     """
     Instancia um ambiente Jinja2 apontando para src/reports/templates.
@@ -135,9 +138,18 @@ def render_html(
       - news_summary
       - now: timestamp legível
 
+    Guardrail de privacidade:
+      - Bloqueia DataFrames no contexto (impede vazamento de dados por linhas).
+        O relatório deve exibir apenas agregados e imagens/indicadores.
+
     Retorna:
       - Caminho absoluto do HTML salvo (string)
     """
+    # --- PRIVACY GUARD: rejeita DataFrames (e Series) no contexto do template
+    for k, v in context.items():
+        if isinstance(v, (pd.DataFrame, pd.Series)):
+            raise ValueError(f"Contexto contém dados tabulares não permitidos: {k}")
+
     env = _jinja_env()
     template = env.get_template(template_name)
     html_str = template.render(**context)
@@ -148,8 +160,7 @@ def render_html(
 
 
 # === 3) HTML -> PDF (xhtml2pdf) ==============================================
-
-def html_to_pdf(html_path: str) -> str | None:
+def html_to_pdf(html_path: str) -> Optional[str]:  # <- (Ajuste 2) Optional[str] para compatibilidade 3.9
     """
     Converte o HTML em PDF usando xhtml2pdf (pure-Python).
     - Retorna o caminho do PDF ou None (se xhtml2pdf não estiver disponível
@@ -165,11 +176,12 @@ def html_to_pdf(html_path: str) -> str | None:
     pdf_path = html_path.replace(".html", ".pdf")
     base_dir = Path(html_path).parent
 
+    # Resolve URIs relativos (../charts/xyz.png) para caminhos absolutos
     def link_callback(uri: str, rel: str) -> str:
-        # Permite http/https (se um dia usarmos)
+        # Permite http/https (se um dia usarmos imagens remotas)
         if uri.startswith(("http://", "https://")):
             return uri
-        # Resolve caminho relativo ao diretório do HTML
+        # Caminho local relativo ao diretório do HTML
         return str((base_dir / uri).resolve())
 
     try:

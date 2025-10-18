@@ -21,8 +21,8 @@ import uuid
 import hashlib
 import traceback
 from contextlib import contextmanager
-from datetime import datetime
-from typing import Any, Dict, Optional
+import datetime
+from typing import Any, Dict, Optional  # <- para Optional[str]
 
 # === Config via .env ===
 LOG_DIR = os.getenv("LOG_DIR", "resources/json")
@@ -36,7 +36,10 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 def _now() -> str:
     """Timestamp ISO8601 com milissegundos (UTC)."""
-    return datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+    # Usa horário consciente de timezone (UTC) e normaliza o sufixo para 'Z'
+    return datetime.datetime.now(datetime.UTC)\
+        .isoformat(timespec="milliseconds")\
+        .replace("+00:00", "Z")
 
 
 def _hash(text: str) -> str:
@@ -44,7 +47,7 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def _truncate(s: str | None, max_len: int = 1000) -> str | None:
+def _truncate(s: Optional[str], max_len: int = 1000) -> Optional[str]:
     """Evita logs gigantes; mantém prévia útil."""
     if s is None:
         return None
@@ -80,7 +83,7 @@ def sanitize_payload(d: Dict[str, Any]) -> Dict[str, Any]:
     return redacted
 
 
-def write_event(event: str, level: str = "INFO", **payload):
+def write_event(event: str, level: str = "INFO", **payload) -> None:
     """
     Grava um evento estruturado (uma linha JSON).
     Use nível DEBUG apenas quando LOG_LEVEL=DEBUG.
@@ -119,8 +122,14 @@ def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
     try:
         yield {"run_id": run_id, "span_id": span_id}
         dur = int((time.perf_counter() - t0) * 1000)
-        write_event(f"{event}.end", run_id=run_id, span_id=span_id, node=node,
-                    duration_ms=dur, ok=True)
+        write_event(
+            f"{event}.end",
+            run_id=run_id,
+            span_id=span_id,
+            node=node,
+            duration_ms=dur,
+            ok=True
+        )
     except Exception as e:
         dur = int((time.perf_counter() - t0) * 1000)
         write_event(
@@ -137,6 +146,6 @@ def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
         raise
 
 
-def log_kv(run_id: str, event: str, **kv):
+def log_kv(run_id: str, event: str, **kv) -> None:
     """Atalho para eventos simples (chave-valor)."""
     write_event(event, run_id=run_id, **kv)
