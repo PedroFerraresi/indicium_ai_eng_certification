@@ -1,14 +1,28 @@
-pandas>=2.2
-requests>=2.31
-sqlalchemy>=2.0
-python-dotenv>=1.0
-matplotlib>=3.9
-jinja2>=3.1
-langchain>=0.3
-langgraph>=0.2
-pdfkit>=1.0
-seaborn>=0.13
-pytest>=8.2,<9
-xhtml2pdf>=0.2.15
-reportlab>=4.2
-openai>=1.51,<2
+# --- Núcleo de dados / ETL ---
+pandas~=2.2.2
+numpy>=1.26,<3
+
+# --- Banco de dados ---
+sqlalchemy~=2.0.34
+
+# --- HTTP & .env ---
+requests~=2.32.3
+python-dotenv~=1.0.1
+
+# --- LLMs / Agentes ---
+openai>=1.51,<2           # usamos a API 1.x com client.chat.completions
+langchain>=0.3            # projeto está escrito para a série 0.3.x
+langgraph>=0.2            # grafo compatível com 0.2.x
+pydantic>=2,<3            # langchain 0.3 usa Pydantic v2
+
+# --- Relatórios & gráficos ---
+jinja2~=3.1.4
+seaborn~=0.13.2
+matplotlib~=3.9.2
+
+# --- HTML -> PDF (pure-Python) ---
+xhtml2pdf~=0.2.15
+reportlab~=4.2.2
+pillow~=10.4.0            # necessários por xhtml2pdf/reportlab
+html5lib~=1.1
+pypdf2~=3.0.1
