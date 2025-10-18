@@ -224,3 +224,5 @@ resources/json/*.json
 # excetua amostras pequenas
 !data/sample/**
 !data/srag.sqlite
+
+notebooks/*.ipynb
