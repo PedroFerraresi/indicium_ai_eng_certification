@@ -103,7 +103,9 @@ def test_run_pipeline_contract(monkeypatch, tmp_path):
         "html_path",
         "pdf_path",
     }
-    assert set(out.keys()) == expected_keys, f"Contrato diferente do esperado: {out.keys()}"
+    assert (
+        set(out.keys()) == expected_keys
+    ), f"Contrato diferente do esperado: {out.keys()}"
 
     # tipos/formatos básicos
     assert out["uf"] == "SP"

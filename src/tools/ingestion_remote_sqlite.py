@@ -1,5 +1,16 @@
-# src/tools/ingestion_remote_sqlite.py
 from __future__ import annotations
+
+import io
+import zipfile
+import requests
+import os
+
+import pandas as pd
+from sqlalchemy import text
+from typing import List
+
+from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
+
 """
 Ingestão remota para SQLite (URLs do OpenDATASUS) — schema SRAG 2024/2025.
 
@@ -16,12 +27,6 @@ Env:
 - REMOTE_TIMEOUT (segundos, default=60)
 """
 
-import io, zipfile, requests, os
-import pandas as pd
-from sqlalchemy import text
-from typing import List
-
-from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
 
 # Candidatas de UF nos CSVs
 UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]
@@ -68,7 +73,9 @@ def _post_clean(df: pd.DataFrame, uf_default: str) -> pd.DataFrame:
         if c in df.columns:
             uf_series = df[c]
             break
-    df["UF"] = _normalize_uf(uf_series if uf_series is not None else uf_default, uf_default)
+    df["UF"] = _normalize_uf(
+        uf_series if uf_series is not None else uf_default, uf_default
+    )
 
     # Flags numéricas (coerção defensiva)
     for col in ["EVOLUCAO", "UTI", "VACINA_COV"]:
@@ -88,26 +95,45 @@ def _read_csv_like(fobj, usecols: List[str]) -> pd.DataFrame:
     """
     # Primeiro, descobre cabeçalho real para intersect usecols
     fobj.seek(0)
-    header = pd.read_csv(fobj, sep=";", nrows=0, encoding="utf-8", on_bad_lines="skip").columns.tolist()
+    header = pd.read_csv(
+        fobj, sep=";", nrows=0, encoding="utf-8", on_bad_lines="skip"
+    ).columns.tolist()
     # Calcula interseção (permite robustez caso nomes variem por ano)
     cols = [c for c in usecols if c in header]
     if not cols:
         # Se nada casar, pelo menos tenta DT_SIN_PRI/UF/EVOLUCAO/UTI/VACINA_COV se existirem
-        base = ["DT_SIN_PRI", "EVOLUCAO", "UTI", "VACINA_COV", "UF", "SG_UF_NOT", "SG_UF", "SG_UF_RES"]
+        base = [
+            "DT_SIN_PRI",
+            "EVOLUCAO",
+            "UTI",
+            "VACINA_COV",
+            "UF",
+            "SG_UF_NOT",
+            "SG_UF",
+            "SG_UF_RES",
+        ]
         cols = [c for c in base if c in header]
 
     # Lê de verdade
     fobj.seek(0)
     try:
         return pd.read_csv(
-            fobj, sep=";", low_memory=False, usecols=cols, encoding="utf-8",
-            on_bad_lines="skip"
+            fobj,
+            sep=";",
+            low_memory=False,
+            usecols=cols,
+            encoding="utf-8",
+            on_bad_lines="skip",
         )
     except UnicodeDecodeError:
         fobj.seek(0)
         return pd.read_csv(
-            fobj, sep=";", low_memory=False, usecols=cols, encoding="latin-1",
-            on_bad_lines="skip"
+            fobj,
+            sep=";",
+            low_memory=False,
+            usecols=cols,
+            encoding="latin-1",
+            on_bad_lines="skip",
         )
 
 
@@ -122,7 +148,9 @@ def _download_selective(url: str, wanted_cols: List[str]) -> pd.DataFrame:
     if url.lower().endswith(".zip"):
         with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
             # Seleciona o maior .csv do zip (evita dicionários/catálogos)
-            csv_infos = [zi for zi in zf.infolist() if zi.filename.lower().endswith(".csv")]
+            csv_infos = [
+                zi for zi in zf.infolist() if zi.filename.lower().endswith(".csv")
+            ]
             if not csv_infos:
                 raise ValueError(f"ZIP sem CSVs em: {url}")
             target_info = max(csv_infos, key=lambda z: z.file_size)
@@ -157,7 +185,9 @@ def ingest_remote(engine_fn, uf_default: str, cols: List[str], urls: List[str]):
         frames.append(df)
 
     if not frames:
-        raise RuntimeError("Falha na ingestão remota: nenhuma tabela carregada das URLs.")
+        raise RuntimeError(
+            "Falha na ingestão remota: nenhuma tabela carregada das URLs."
+        )
 
     full = pd.concat(frames, ignore_index=True)
     print(f"📦 Total consolidado: {len(full):,} linhas")
@@ -169,7 +199,8 @@ def ingest_remote(engine_fn, uf_default: str, cols: List[str], urls: List[str]):
 
         # base
         conn.execute(text("DROP TABLE IF EXISTS srag_base"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE srag_base AS
             SELECT
               DT_SIN_PRI AS event_date,
@@ -179,12 +210,18 @@ def ingest_remote(engine_fn, uf_default: str, cols: List[str], urls: List[str]):
               CASE WHEN VACINA_COV=1 THEN 1 ELSE 0 END AS vaccinated_flag
             FROM srag_staging
             WHERE DT_SIN_PRI IS NOT NULL
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_base_date_uf ON srag_base (event_date, uf)"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_srag_base_date_uf ON srag_base (event_date, uf)"
+            )
+        )
 
         # daily
         conn.execute(text("DROP TABLE IF EXISTS srag_daily"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE srag_daily AS
             SELECT date(event_date) AS day, uf,
                    COUNT(*) AS cases,
@@ -193,12 +230,18 @@ def ingest_remote(engine_fn, uf_default: str, cols: List[str], urls: List[str]):
                    SUM(vaccinated_flag) AS vaccinated_cases
             FROM srag_base
             GROUP BY 1,2
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_daily_day_uf ON srag_daily (day, uf)"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_srag_daily_day_uf ON srag_daily (day, uf)"
+            )
+        )
 
         # monthly
         conn.execute(text("DROP TABLE IF EXISTS srag_monthly"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE srag_monthly AS
             SELECT strftime('%Y-%m-01', event_date) AS month, uf,
                    COUNT(*) AS cases,
@@ -207,7 +250,12 @@ def ingest_remote(engine_fn, uf_default: str, cols: List[str], urls: List[str]):
                    SUM(vaccinated_flag) AS vaccinated_cases
             FROM srag_base
             GROUP BY 1,2
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_monthly_month_uf ON srag_monthly (month, uf)"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_srag_monthly_month_uf ON srag_monthly (month, uf)"
+            )
+        )
 
     print(f"✅ Ingestão remota concluída ({len(urls)} URL(s) processada(s)).")

@@ -1,14 +1,4 @@
 from __future__ import annotations
-"""
-Ferramenta de notícias (Serper + OpenAI) com:
-- Timeouts, retries com backoff exponencial + jitter
-- Fail-fast e mensagens amigáveis (não propaga exceções)
-- Logs estruturados (audit.log_kv) incluindo latência e uso do LLM
-
-Requisitos:
-- openai>=1.42,<2
-- requests
-"""
 
 import os
 import time
@@ -22,6 +12,18 @@ from dotenv import load_dotenv
 from openai import OpenAI, RateLimitError, APIConnectionError, APITimeoutError
 
 from src.utils.audit import log_kv
+
+
+"""
+Ferramenta de notícias (Serper + OpenAI) com:
+- Timeouts, retries com backoff exponencial + jitter
+- Fail-fast e mensagens amigáveis (não propaga exceções)
+- Logs estruturados (audit.log_kv) incluindo latência e uso do LLM
+
+Requisitos:
+- openai>=1.42,<2
+- requests
+"""
 
 # Carrega variáveis do .env
 load_dotenv()
@@ -46,7 +48,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 def _sleep_backoff(attempt: int) -> None:
     """Backoff exponencial com jitter leve (evita thundering herd)."""
-    base = API_BACKOFF_BASE * (2 ** attempt)
+    base = API_BACKOFF_BASE * (2**attempt)
     time.sleep(base + random.uniform(0, 0.25))
 
 
@@ -54,13 +56,15 @@ def _normalize_items(items: List[Dict]) -> List[Dict]:
     """Mantém apenas campos úteis e evita None."""
     out: List[Dict] = []
     for it in items:
-        out.append({
-            "title": (it.get("title") or "").strip(),
-            "source": (it.get("source") or "").strip(),
-            "link": (it.get("link") or "").strip(),
-            # mantemos publishedDate se existir (pode ajudar no futuro)
-            "date": (it.get("date") or it.get("publishedDate") or "").strip(),
-        })
+        out.append(
+            {
+                "title": (it.get("title") or "").strip(),
+                "source": (it.get("source") or "").strip(),
+                "link": (it.get("link") or "").strip(),
+                # mantemos publishedDate se existir (pode ajudar no futuro)
+                "date": (it.get("date") or it.get("publishedDate") or "").strip(),
+            }
+        )
     return out
 
 
@@ -96,7 +100,9 @@ def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[
             # 429/5xx → tentamos de novo
             if r.status_code in (429, 500, 502, 503, 504):
                 last_err = f"http_status={r.status_code}"
-                log_kv(rid, "serper.retry", attempt=attempt, status=r.status_code, query=q)
+                log_kv(
+                    rid, "serper.retry", attempt=attempt, status=r.status_code, query=q
+                )
                 if attempt < API_MAX_RETRIES:
                     _sleep_backoff(attempt)
                     continue
@@ -121,7 +127,9 @@ def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[
             except requests.RequestException as e:
                 # Aqui só cai se for um 429/5xx e sem retries restantes
                 last_err = str(e)
-                log_kv(rid, "serper.http_error_final", status=r.status_code, error=str(e))
+                log_kv(
+                    rid, "serper.http_error_final", status=r.status_code, error=str(e)
+                )
                 return []
 
             items = data.get("news", [])[:num]
@@ -130,7 +138,9 @@ def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[
         except requests.RequestException as e:
             # timeouts, DNS, conexão etc.
             last_err = str(e)
-            log_kv(rid, "serper.retry.exception", attempt=attempt, error=str(e), query=q)
+            log_kv(
+                rid, "serper.retry.exception", attempt=attempt, error=str(e), query=q
+            )
             if attempt < API_MAX_RETRIES:
                 _sleep_backoff(attempt)
                 continue
@@ -210,8 +220,16 @@ def summarize_news(items: List[Dict], run_id: Optional[str] = None) -> str:
         # Outros erros (tenta detectar por string se é retryable)
         except Exception as e:
             last_err = str(e)
-            retryable = any(x in last_err for x in ("429", "RateLimit", "timeout", "Connection"))
-            log_kv(rid, "openai.retry", attempt=attempt, retryable=retryable, error=last_err)
+            retryable = any(
+                x in last_err for x in ("429", "RateLimit", "timeout", "Connection")
+            )
+            log_kv(
+                rid,
+                "openai.retry",
+                attempt=attempt,
+                retryable=retryable,
+                error=last_err,
+            )
             if retryable and attempt < API_MAX_RETRIES:
                 _sleep_backoff(attempt)
                 continue

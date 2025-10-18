@@ -1,4 +1,7 @@
-# tests/test_audit_log_basic.py
+import json
+import pathlib
+import importlib
+
 """
 Teste UNITÁRIO do módulo de auditoria (src/utils/audit.py).
 
@@ -12,10 +15,6 @@ Por isso, configuramos o ambiente e RECARREGAMOS o módulo (importlib.reload)
 para garantir que ele capte os paths temporários do teste.
 """
 
-import json
-import pathlib
-import importlib
-
 
 def test_audit_span_and_events(tmp_path, monkeypatch):
     # 1) Redireciona log para uma pasta/arquivo temporários
@@ -28,6 +27,7 @@ def test_audit_span_and_events(tmp_path, monkeypatch):
     # 2) Recarrega o módulo DEPOIS de configurar o ambiente,
     #    pois ele lê LOG_DIR/LOG_FILE ao importar
     import src.utils.audit as audit
+
     audit = importlib.reload(audit)
 
     run_id = audit.new_run_id()
@@ -52,7 +52,7 @@ def test_audit_span_and_events(tmp_path, monkeypatch):
     lines = content.splitlines()
     assert len(lines) >= 3, "Esperávamos pelo menos start/end/kv ou start/error."
 
-    events = [json.loads(l) for l in lines]
+    events = [json.loads(line) for line in lines]
     kinds = {e["event"] for e in events}
 
     # Eventos essenciais gerados acima

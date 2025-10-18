@@ -1,5 +1,16 @@
 # src/utils/audit.py
 from __future__ import annotations
+
+import os
+import json
+import time
+import uuid
+import hashlib
+import traceback
+from contextlib import contextmanager
+import datetime
+from typing import Any, Dict, Optional
+
 """
 Utilitários de auditoria/observabilidade.
 
@@ -15,21 +26,12 @@ Configuração por .env (com defaults seguros):
 - LOG_SANITIZE  (default: 1)     [1=liga sanitização, 0=desliga]
 """
 
-import os
-import json
-import time
-import uuid
-import hashlib
-import traceback
-from contextlib import contextmanager
-import datetime
-from typing import Any, Dict, Optional
 
 # === Config via .env ===
 LOG_DIR = os.getenv("LOG_DIR", "resources/json")
 LOG_FILE = os.getenv("LOG_FILE", os.path.join(LOG_DIR, "events.jsonl"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()  # INFO | DEBUG
-SANITIZE = os.getenv("LOG_SANITIZE", "1") == "1"     # 1 = mascara prompts/segredos
+SANITIZE = os.getenv("LOG_SANITIZE", "1") == "1"  # 1 = mascara prompts/segredos
 
 # Garante diretório
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -55,11 +57,20 @@ def _truncate(s: str | None, max_len: int = 1000) -> str | None:
 # ---------- Sanitização (recursiva) ----------
 _SENSITIVE_KEYS = {
     # comuns
-    "api_key", "apikey", "key", "authorization", "bearer", "token",
-    "access_token", "secret", "password",
+    "api_key",
+    "apikey",
+    "key",
+    "authorization",
+    "bearer",
+    "token",
+    "access_token",
+    "secret",
+    "password",
     # nomes específicos do projeto
-    "openai_api_key", "serper_api_key",
+    "openai_api_key",
+    "serper_api_key",
 }
+
 
 def _sanitize_value(v: Any, key_hint: Optional[str] = None) -> Any:
     """
@@ -171,8 +182,14 @@ def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
     try:
         yield {"run_id": run_id, "span_id": span_id}
         dur = int((time.perf_counter() - t0) * 1000)
-        write_event(f"{event}.end", run_id=run_id, span_id=span_id, node=node,
-                    duration_ms=dur, ok=True)
+        write_event(
+            f"{event}.end",
+            run_id=run_id,
+            span_id=span_id,
+            node=node,
+            duration_ms=dur,
+            ok=True,
+        )
     except Exception as e:
         dur = int((time.perf_counter() - t0) * 1000)
         write_event(

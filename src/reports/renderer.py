@@ -1,4 +1,14 @@
 from __future__ import annotations
+
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 """
 renderer.py
 -----------
@@ -17,15 +27,6 @@ Notas:
 - Se xhtml2pdf não estiver instalado, seguimos apenas com HTML (retorna None no PDF).
 """
 
-from pathlib import Path
-from typing import Dict, Any, Optional
-
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-
 # Conversão HTML -> PDF sem binários externos (wkhtmltopdf não é necessário)
 try:
     from xhtml2pdf import pisa
@@ -33,9 +34,9 @@ except Exception:
     pisa = None  # se indisponível, html_to_pdf retornará None com segurança
 
 # === Diretórios padrão (mantidos fixos para compatibilidade com o projeto) ===
-TEMPLATES_DIR = Path("src/reports/templates")   # onde está report.html.j2
-REPORTS_DIR   = Path("resources/reports")       # onde salvamos o HTML/PDF
-CHARTS_DIR    = Path("resources/charts")        # onde salvamos os PNGs
+TEMPLATES_DIR = Path("src/reports/templates")  # onde está report.html.j2
+REPORTS_DIR = Path("resources/reports")  # onde salvamos o HTML/PDF
+CHARTS_DIR = Path("resources/charts")  # onde salvamos os PNGs
 
 # Garante existência dos diretórios de artefatos
 for _p in (REPORTS_DIR, CHARTS_DIR):
@@ -161,7 +162,7 @@ def html_to_pdf(html_path: str) -> Optional[str]:
                 link_callback=link_callback,
                 encoding="utf-8",
             )
-            
+
         print(pdf_path)
         return pdf_path if not result.err else None
     except Exception:

@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 from src.reports.renderer import render_html
 
+
 def test_renderer_blocks_dataframes():
     """Deve barrar DataFrame no contexto para evitar vazamento de dados por linha."""
     ctx = {
@@ -20,6 +21,7 @@ def test_renderer_blocks_dataframes():
     with pytest.raises(ValueError) as ei:
         render_html(ctx)
     assert "series_30d" in str(ei.value)
+
 
 def test_renderer_blocks_series():
     """Deve barrar pandas.Series no contexto (mesmo motivo: evitar dados tabulares)."""

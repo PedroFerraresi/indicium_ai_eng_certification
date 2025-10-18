@@ -3,6 +3,7 @@ import pathlib
 import re
 from src.reports.renderer import render_html
 
+
 def _ensure_report():
     """
     Garante que resources/reports/relatorio.html exista.
@@ -85,7 +86,7 @@ def test_report_contract_image_paths_are_relative():
     (idem para 12m)
     E aceita aspas simples OU duplas no atributo src.
     """
-    html = pathlib.Path(r'resources\reports\relatorio.html').read_text(encoding="utf-8")
+    html = pathlib.Path(r"resources\reports\relatorio.html").read_text(encoding="utf-8")
 
     # Expressões mais tolerantes: aspas simples/duplas e charts/ ou ../charts/
     pat_30d = r'src=["\'](?:\.\./)?charts/casos_30d\.png["\']'

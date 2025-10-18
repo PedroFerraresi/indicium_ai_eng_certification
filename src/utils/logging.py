@@ -1,15 +1,20 @@
 from __future__ import annotations
+
+import os
+import json
+import time
+from typing import Any, Dict
+
 """
 Utilitário simples de logging estruturado:
 - Registra eventos (ex.: ingestão, métricas, renderização) como arquivos JSON.
 - Facilita auditoria e depuração (rastrear o que aconteceu e quando).
 """
 
-import os, json, time
-from typing import Any, Dict
 
-
-def log_event(name: str, payload: Dict[str, Any], folder: str = "resources/json") -> str:
+def log_event(
+    name: str, payload: Dict[str, Any], folder: str = "resources/json"
+) -> str:
     """
     Salva um JSON com timestamp (ms) e nome do evento.
     Retorna o caminho do arquivo salvo.

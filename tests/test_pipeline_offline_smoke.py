@@ -9,6 +9,7 @@ Smoke test OFFLINE do pipeline:
 import importlib
 from pathlib import Path
 
+
 def test_pipeline_offline_end_to_end(monkeypatch):
     # 1) Força modo "sem rede": sem chaves e ingestão local
     monkeypatch.setenv("OPENAI_API_KEY", "")
@@ -17,9 +18,11 @@ def test_pipeline_offline_end_to_end(monkeypatch):
 
     # 2) Recarrega módulos que leem .env no import
     import src.tools.news as news
+
     importlib.reload(news)  # agora SERPER/OPENAI_API_KEY ficam vazios
 
     import src.agents.orchestrator as orch
+
     importlib.reload(orch)  # garante que o orchestrator use o 'news' recarregado
 
     # 3) Executa a pipeline (data/raw já tem arquivos no repo)
@@ -27,7 +30,7 @@ def test_pipeline_offline_end_to_end(monkeypatch):
 
     # 4) Valida contrato mínimo dos artefatos
     html = out.get("html_path")
-    pdf  = out.get("pdf_path")
+    pdf = out.get("pdf_path")
 
     assert html and Path(html).exists(), "HTML não foi gerado."
     # PDF pode existir (xhtml2pdf instalado) ou não — ambos aceitáveis

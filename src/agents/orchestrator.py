@@ -1,4 +1,29 @@
 from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import TypedDict, Optional, Any, Dict
+from datetime import datetime
+from langgraph.graph import StateGraph, END
+
+# Ingestão + métricas
+from src.tools.database_orchestrator_sqlite import (
+    ingest as ingest_csvs,
+    compute_metrics,
+)
+
+# Notícias (busca + sumarização) — news.py já tem timeouts/retries/backoff
+from src.tools.news import search_news, summarize_news
+
+# Relatório e gráficos
+from src.reports.renderer import plot_series, render_html, html_to_pdf
+
+# Auditoria estruturada
+from src.utils.audit import new_run_id, audit_span, log_kv
+
+# Validações e clamp de datas
+from src.utils.validation import validate_uf, clamp_future_dates
+
 """
 Orquestrador do pipeline (LangGraph).
 
@@ -23,30 +48,10 @@ Contrato de saída:
   }
 """
 
-import os
-from pathlib import Path
-from typing import TypedDict, Optional, Any, Dict
-from datetime import datetime
-from langgraph.graph import StateGraph, END
-
-# Ingestão + métricas
-from src.tools.database_orchestrator_sqlite import ingest as ingest_csvs, compute_metrics
-
-# Notícias (busca + sumarização) — news.py já tem timeouts/retries/backoff
-from src.tools.news import search_news, summarize_news
-
-# Relatório e gráficos
-from src.reports.renderer import plot_series, render_html, html_to_pdf
-
-# Auditoria estruturada
-from src.utils.audit import new_run_id, audit_span, log_kv
-
-# Validações e clamp de datas
-from src.utils.validation import validate_uf, clamp_future_dates
-
 
 class AgentState(TypedDict, total=False):
     """Estado compartilhado do grafo (chaves adicionadas ao longo do fluxo)."""
+
     run_id: str
     uf: str
     metrics: dict[str, Any]
@@ -76,13 +81,16 @@ def node_metrics(state: AgentState):
         m["series_30d"] = clamp_future_dates(m["series_30d"], "day")
         m["series_12m"] = clamp_future_dates(m["series_12m"], "month")
         # resumo leve
-        log_kv(run_id, "metrics.summary",
-               increase_rate=m["increase_rate"],
-               mortality_rate=m["mortality_rate"],
-               icu_rate=m["icu_rate"],
-               vaccination_rate=m["vaccination_rate"],
-               rows_30d=int(m["series_30d"].shape[0]),
-               rows_12m=int(m["series_12m"].shape[0]))
+        log_kv(
+            run_id,
+            "metrics.summary",
+            increase_rate=m["increase_rate"],
+            mortality_rate=m["mortality_rate"],
+            icu_rate=m["icu_rate"],
+            vaccination_rate=m["vaccination_rate"],
+            rows_30d=int(m["series_30d"].shape[0]),
+            rows_12m=int(m["series_12m"].shape[0]),
+        )
         state["metrics"] = m
         state["uf"] = uf
     return state
@@ -101,9 +109,12 @@ def node_charts(state: AgentState):
         if len(m["series_12m"]) > 0:
             plot_series(m["series_12m"], "month", "cases", "Casos mensais (12m)", c12)
             state["chart_12m"] = c12
-        log_kv(run_id, "charts.output",
-               chart_30d=state.get("chart_30d"),
-               chart_12m=state.get("chart_12m"))
+        log_kv(
+            run_id,
+            "charts.output",
+            chart_30d=state.get("chart_30d"),
+            chart_12m=state.get("chart_12m"),
+        )
     return state
 
 
@@ -117,7 +128,11 @@ def node_news(state: AgentState):
             items = []
         log_kv(run_id, "news.items", count=len(items))
         try:
-            summary = summarize_news(items, run_id=run_id) if items else "Sem notícias recentes encontradas."
+            summary = (
+                summarize_news(items, run_id=run_id)
+                if items
+                else "Sem notícias recentes encontradas."
+            )
         except Exception:
             summary = "Resumo de notícias indisponível no momento."
         log_kv(run_id, "news.summary", length=len(summary))
@@ -140,6 +155,7 @@ def node_report(state: AgentState):
 
         # --- Caminhos relativos em formato POSIX ('/') independentemente do SO
         reports_dir = Path("resources/reports")
+
         def _rel_posix(p: Optional[str]) -> Optional[str]:
             if not p:
                 return None
@@ -154,7 +170,9 @@ def node_report(state: AgentState):
             **{k: m[k] for k in kpis},
             "chart_30d": rel30,
             "chart_12m": rel12,
-            "news_summary": state.get("news_summary", "Sem notícias recentes encontradas."),
+            "news_summary": state.get(
+                "news_summary", "Sem notícias recentes encontradas."
+            ),
             "now": datetime.now().strftime("%d/%m/%Y %H:%M"),
         }
         html = render_html(ctx)
@@ -200,7 +218,9 @@ def run_pipeline(uf: str) -> Dict[str, Any]:
     canonical_out: Dict[str, Any] = {
         "uf": final_state.get("uf", uf),
         "metrics": final_state.get("metrics", {}),
-        "news_summary": final_state.get("news_summary", "Sem notícias recentes encontradas."),
+        "news_summary": final_state.get(
+            "news_summary", "Sem notícias recentes encontradas."
+        ),
         "chart_30d": final_state.get("chart_30d"),
         "chart_12m": final_state.get("chart_12m"),
         "html_path": final_state.get("html_path"),

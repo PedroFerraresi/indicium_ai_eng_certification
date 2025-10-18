@@ -1,4 +1,15 @@
 from __future__ import annotations
+
+import os
+import zipfile
+import glob
+import io
+from typing import List
+import pandas as pd
+from sqlalchemy import text
+
+from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
+
 """
 Ingestão local para SQLite (CSV/ZIP em data/raw/) — schema SRAG 2024/2025.
 
@@ -12,13 +23,6 @@ Robustez adicionada:
 - Um statement por execute() (compatível com SQLite).
 - Índices (base/daily/monthly) para acelerar consultas posteriores.
 """
-
-import os, zipfile, glob, io
-from typing import List
-import pandas as pd
-from sqlalchemy import text
-
-from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
 
 # Ordem de preferência para detectar UF nos CSVs
 UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]
@@ -62,7 +66,9 @@ def _post_clean(df: pd.DataFrame, uf_default: str) -> pd.DataFrame:
         if c in df.columns:
             uf_series = df[c]
             break
-    df["UF"] = _normalize_uf(uf_series if uf_series is not None else uf_default, uf_default)
+    df["UF"] = _normalize_uf(
+        uf_series if uf_series is not None else uf_default, uf_default
+    )
 
     # Flags numéricas (coerção defensiva)
     for col in ["EVOLUCAO", "UTI", "VACINA_COV"]:
@@ -82,24 +88,43 @@ def _read_csv_like(fobj, wanted_cols: List[str]) -> pd.DataFrame:
     """
     # Descobre cabeçalho real
     fobj.seek(0)
-    header = pd.read_csv(fobj, sep=";", nrows=0, encoding="utf-8", on_bad_lines="skip").columns.tolist()
+    header = pd.read_csv(
+        fobj, sep=";", nrows=0, encoding="utf-8", on_bad_lines="skip"
+    ).columns.tolist()
     cols = [c for c in wanted_cols if c in header]
     if not cols:
-        base = ["DT_SIN_PRI", "EVOLUCAO", "UTI", "VACINA_COV", "UF", "SG_UF_NOT", "SG_UF", "SG_UF_RES"]
+        base = [
+            "DT_SIN_PRI",
+            "EVOLUCAO",
+            "UTI",
+            "VACINA_COV",
+            "UF",
+            "SG_UF_NOT",
+            "SG_UF",
+            "SG_UF_RES",
+        ]
         cols = [c for c in base if c in header]
 
     # Lê os dados
     fobj.seek(0)
     try:
         return pd.read_csv(
-            fobj, sep=";", low_memory=False, usecols=cols, encoding="utf-8",
-            on_bad_lines="skip"
+            fobj,
+            sep=";",
+            low_memory=False,
+            usecols=cols,
+            encoding="utf-8",
+            on_bad_lines="skip",
         )
     except UnicodeDecodeError:
         fobj.seek(0)
         return pd.read_csv(
-            fobj, sep=";", low_memory=False, usecols=cols, encoding="latin-1",
-            on_bad_lines="skip"
+            fobj,
+            sep=";",
+            low_memory=False,
+            usecols=cols,
+            encoding="latin-1",
+            on_bad_lines="skip",
         )
 
 
@@ -139,7 +164,10 @@ def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "dat
     """
     os.makedirs(folder, exist_ok=True)
 
-    paths = sorted(glob.glob(os.path.join(folder, "*.csv")) + glob.glob(os.path.join(folder, "*.zip")))
+    paths = sorted(
+        glob.glob(os.path.join(folder, "*.csv"))
+        + glob.glob(os.path.join(folder, "*.zip"))
+    )
     if not paths:
         print(f"⚠️  ingest_local: nenhum CSV/ZIP encontrado em '{folder}'.")
         return
@@ -165,7 +193,8 @@ def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "dat
 
         # base
         conn.execute(text("DROP TABLE IF EXISTS srag_base"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE srag_base AS
             SELECT
               DT_SIN_PRI AS event_date,
@@ -175,12 +204,18 @@ def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "dat
               CASE WHEN VACINA_COV=1 THEN 1 ELSE 0 END AS vaccinated_flag
             FROM srag_staging
             WHERE DT_SIN_PRI IS NOT NULL
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_base_date_uf ON srag_base (event_date, uf)"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_srag_base_date_uf ON srag_base (event_date, uf)"
+            )
+        )
 
         # diárias
         conn.execute(text("DROP TABLE IF EXISTS srag_daily"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE srag_daily AS
             SELECT date(event_date) AS day, uf,
                    COUNT(*) AS cases,
@@ -189,12 +224,18 @@ def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "dat
                    SUM(vaccinated_flag) AS vaccinated_cases
             FROM srag_base
             GROUP BY 1,2
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_daily_day_uf ON srag_daily (day, uf)"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_srag_daily_day_uf ON srag_daily (day, uf)"
+            )
+        )
 
         # mensais
         conn.execute(text("DROP TABLE IF EXISTS srag_monthly"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE srag_monthly AS
             SELECT strftime('%Y-%m-01', event_date) AS month, uf,
                    COUNT(*) AS cases,
@@ -203,7 +244,12 @@ def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "dat
                    SUM(vaccinated_flag) AS vaccinated_cases
             FROM srag_base
             GROUP BY 1,2
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_monthly_month_uf ON srag_monthly (month, uf)"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_srag_monthly_month_uf ON srag_monthly (month, uf)"
+            )
+        )
 
     print(f"✅ Ingestão local concluída ({len(paths)} arquivo(s) em '{folder}').")

@@ -1,15 +1,4 @@
 from __future__ import annotations
-"""
-Orquestrador de ingestão (SQLite) + métricas.
-
-Modo de ingestão controlado por .env:
-- INGEST_MODE=auto   -> usa local se houver arquivos em data/raw/, senão remoto
-- INGEST_MODE=local  -> força ingestão local (ignora URLs)
-- INGEST_MODE=remote -> força ingestão remota (ignora arquivos locais)
-
-SRAG_URLS: lista separada por vírgulas com as URLs CSV/ZIP do OpenDATASUS.
-Ex.: SRAG_URLS=https://.../INFLUD24.csv,https://.../INFLUD25.csv
-"""
 
 import os
 import glob
@@ -22,6 +11,19 @@ from dotenv import load_dotenv, find_dotenv
 from src.tools.ingestion_local_sqlite import ingest_local
 from src.tools.ingestion_remote_sqlite import ingest_remote
 
+"""
+Orquestrador de ingestão (SQLite) + métricas.
+
+Modo de ingestão controlado por .env:
+- INGEST_MODE=auto   -> usa local se houver arquivos em data/raw/, senão remoto
+- INGEST_MODE=local  -> força ingestão local (ignora URLs)
+- INGEST_MODE=remote -> força ingestão remota (ignora arquivos locais)
+
+SRAG_URLS: lista separada por vírgulas com as URLs CSV/ZIP do OpenDATASUS.
+Ex.: SRAG_URLS=https://.../INFLUD24.csv,https://.../INFLUD25.csv
+"""
+
+
 # -----------------------------------------------------------------------------
 # ENV & Config
 # -----------------------------------------------------------------------------
@@ -32,11 +34,13 @@ DB_PATH = os.getenv("DB_PATH", "data/srag.sqlite")
 UF_DEFAULT = os.getenv("UF_INICIAL", "SP")
 INGEST_MODE = os.getenv("INGEST_MODE", "auto").lower()  # auto | local | remote
 
+
 def _parse_urls(env_val: str | None) -> List[str]:
     """Divide SRAG_URLS por vírgula e remove espaços vazios."""
     if not env_val:
         return []
     return [u.strip() for u in env_val.split(",") if u.strip()]
+
 
 SRAG_URLS: List[str] = _parse_urls(os.getenv("SRAG_URLS", ""))
 
@@ -91,11 +95,15 @@ def ingest() -> None:
         has_local = False
         print("⚙️  INGEST_MODE=remote → usando ingestão remota (SRAG_URLS).")
     else:
-        print("⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto).")
+        print(
+            "⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto)."
+        )
 
     if has_local:
         print(f"📦 Detectados arquivos locais em {raw_glob} → ingestão local.")
-        ingest_local(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw")
+        ingest_local(
+            engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw"
+        )
     else:
         if not SRAG_URLS:
             raise RuntimeError(
@@ -103,7 +111,9 @@ def ingest() -> None:
                 "Preencha SRAG_URLS com as URLs CSV/ZIP do OpenDATASUS, separadas por vírgulas."
             )
         print(f"🌐 Ingestão remota com {len(SRAG_URLS)} URL(s).")
-        ingest_remote(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=SRAG_URLS)
+        ingest_remote(
+            engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=SRAG_URLS
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -127,7 +137,9 @@ def _fetch_last_two_months(eng, uf: str) -> List[Tuple[str, int]]:
         ).fetchall()
 
 
-def _fetch_single_pair(eng, uf: str, fields: str) -> Tuple[Optional[int], Optional[int]]:
+def _fetch_single_pair(
+    eng, uf: str, fields: str
+) -> Tuple[Optional[int], Optional[int]]:
     """
     Helper genérico para obter (x, cases) do mês mais recente em srag_monthly.
     Ex.: fields="deaths, cases"   ou   fields="icu_cases, cases"
@@ -162,7 +174,7 @@ def compute_metrics(uf: str | None = None) -> Dict[str, Any]:
 
     Retorna dicionário com KPIs + DataFrames.
     """
-    uf = (uf or UF_DEFAULT)
+    uf = uf or UF_DEFAULT
 
     eng = _engine()
 
@@ -182,12 +194,12 @@ def compute_metrics(uf: str | None = None) -> Dict[str, Any]:
 
     # --- B) Taxas do mês mais recente ---------------------------------------
     deaths, cases_m = _fetch_single_pair(eng, uf, "deaths, cases")
-    icu,    cases_i = _fetch_single_pair(eng, uf, "icu_cases, cases")
-    vax,    cases_v = _fetch_single_pair(eng, uf, "vaccinated_cases, cases")
+    icu, cases_i = _fetch_single_pair(eng, uf, "icu_cases, cases")
+    vax, cases_v = _fetch_single_pair(eng, uf, "vaccinated_cases, cases")
 
-    mortality_rate   = (deaths / cases_m) if cases_m else None
-    icu_rate         = (icu    / cases_i) if cases_i else None
-    vaccination_rate = (vax    / cases_v) if cases_v else None
+    mortality_rate = (deaths / cases_m) if cases_m else None
+    icu_rate = (icu / cases_i) if cases_i else None
+    vaccination_rate = (vax / cases_v) if cases_v else None
 
     # --- C) Séries (últimos 30 dias / 12 meses) ------------------------------
     # Observação: usamos filtros relativos ao "agora" do SQLite; caso deseje
@@ -220,8 +232,8 @@ def compute_metrics(uf: str | None = None) -> Dict[str, Any]:
         "mortality_rate": mortality_rate,
         "icu_rate": icu_rate,
         "vaccination_rate": vaccination_rate,
-        "series_30d": last_30,   # DataFrame com colunas: day, cases
-        "series_12m": last_12,   # DataFrame com colunas: month, cases
+        "series_30d": last_30,  # DataFrame com colunas: day, cases
+        "series_12m": last_12,  # DataFrame com colunas: month, cases
         "current_cases": current_cases,
         "prev_cases": prev_cases,
     }

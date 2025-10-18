@@ -21,10 +21,13 @@ import pytest
 
 pytestmark = pytest.mark.integration  # marca como teste de integração
 
+
 def test_audit_log_exists_and_has_spans():
     p = pathlib.Path("resources/json/events.jsonl")
     if not p.exists():
-        pytest.skip("events.jsonl não encontrado — rode o pipeline antes (python main.py).")
+        pytest.skip(
+            "events.jsonl não encontrado — rode o pipeline antes (python main.py)."
+        )
 
     lines = p.read_text(encoding="utf-8").strip().splitlines()
     assert lines, "Log vazio — rode o pipeline para gerar eventos."
@@ -43,7 +46,9 @@ def test_audit_log_exists_and_has_spans():
     ok = any(required.issubset(events) for events in seen_by_run.values())
     if not ok:
         # Ajuda na depuração: mostra os últimos eventos por run_id
-        debug = {rid: sorted(list(evts & required)) for rid, evts in seen_by_run.items()}
+        debug = {
+            rid: sorted(list(evts & required)) for rid, evts in seen_by_run.items()
+        }
         pytest.fail(f"Não encontramos um run completo com {required}. Vistos: {debug}")
 
     # Checagem bônus: pelo menos um run_id deve ter 'charts.end' e 'news.end' também
@@ -51,4 +56,6 @@ def test_audit_log_exists_and_has_spans():
     bonus_ok = any(bonus_required.issubset(events) for events in seen_by_run.values())
     # Não falhamos se não tiver, mas avisamos para incentivar cobertura completa
     if not bonus_ok:
-        pytest.skip("Aviso: não encontramos charts.end/news.end nas últimas execuções (ok, mas verifique o pipeline).")
+        pytest.skip(
+            "Aviso: não encontramos charts.end/news.end nas últimas execuções (ok, mas verifique o pipeline)."
+        )

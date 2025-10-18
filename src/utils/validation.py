@@ -1,15 +1,43 @@
 from __future__ import annotations
-"""
-Validações de entrada (UF, datas).
-"""
+
 import pandas as pd
 import datetime
 
+"""
+Validações de entrada (UF, datas).
+"""
+
+
 VALID_UFS = {
-    "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
-    "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC",
-    "SP","SE","TO"
+    "AC",
+    "AL",
+    "AP",
+    "AM",
+    "BA",
+    "CE",
+    "DF",
+    "ES",
+    "GO",
+    "MA",
+    "MT",
+    "MS",
+    "MG",
+    "PA",
+    "PB",
+    "PR",
+    "PE",
+    "PI",
+    "RJ",
+    "RN",
+    "RS",
+    "RO",
+    "RR",
+    "SC",
+    "SP",
+    "SE",
+    "TO",
 }
+
 
 def validate_uf(uf: str) -> str:
     """Normaliza e valida UF; lança ValueError se inválida."""

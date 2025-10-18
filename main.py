@@ -32,7 +32,7 @@ def main() -> int:
     # 3) Propaga flags para o ambiente (consumido pelos nós do pipeline)
     os.environ["INGEST_MODE"] = args.ingest_mode
     os.environ["NEWS_QUERY"] = args.news_query
-    
+
     if args.no_news:
         os.environ["DISABLE_NEWS"] = "1"
     if args.no_pdf:

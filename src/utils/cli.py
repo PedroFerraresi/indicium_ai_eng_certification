@@ -1,4 +1,8 @@
 from __future__ import annotations
+
+import os
+import argparse
+
 """
 Utilitários de CLI para o projeto.
 
@@ -8,9 +12,6 @@ Utilitários de CLI para o projeto.
 Obs.: NÃO chama load_dotenv aqui; o main.py deve chamar antes para
 popular os defaults corretamente.
 """
-
-import os
-import argparse
 
 
 def parse_args() -> argparse.Namespace:

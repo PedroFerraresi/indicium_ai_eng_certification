@@ -19,17 +19,22 @@ def _load_env() -> None:
 # ------------------------------
 # Presenças básicas no .env
 # ------------------------------
-@pytest.mark.parametrize("var_name", [
-    "DB_PATH",
-    "UF_INICIAL",
-    "INGEST_MODE",
-    "OPENAI_API_KEY",
-    "SERPER_API_KEY",
-    "NEWS_QUERY",
-])
+@pytest.mark.parametrize(
+    "var_name",
+    [
+        "DB_PATH",
+        "UF_INICIAL",
+        "INGEST_MODE",
+        "OPENAI_API_KEY",
+        "SERPER_API_KEY",
+        "NEWS_QUERY",
+    ],
+)
 def test_env_vars_presence(var_name: str):
     val = os.getenv(var_name)
-    assert val is not None and val.strip() != "", f"Variável {var_name} ausente ou vazia no .env"
+    assert (
+        val is not None and val.strip() != ""
+    ), f"Variável {var_name} ausente ou vazia no .env"
 
 
 def test_db_path_parent_dir_exists():
@@ -40,9 +45,9 @@ def test_db_path_parent_dir_exists():
 
 def test_uf_inicial_format():
     uf = os.getenv("UF_INICIAL", "")
-    assert re.fullmatch(r"[A-Z]{2}", uf) is not None, (
-        f"UF_INICIAL inválido: '{uf}'. Use duas letras maiúsculas (ex.: 'SP')."
-    )
+    assert (
+        re.fullmatch(r"[A-Z]{2}", uf) is not None
+    ), f"UF_INICIAL inválido: '{uf}'. Use duas letras maiúsculas (ex.: 'SP')."
 
 
 # ------------------------------
@@ -51,10 +56,12 @@ def test_uf_inicial_format():
 def test_api_keys_look_sane():
     openai_key = os.getenv("OPENAI_API_KEY", "")
     serper_key = os.getenv("SERPER_API_KEY", "")
-    assert len(openai_key) >= 15 and "coloque" not in openai_key.lower(), \
-        "OPENAI_API_KEY parece placeholder."
-    assert len(serper_key) >= 10 and "coloque" not in serper_key.lower(), \
-        "SERPER_API_KEY parece placeholder."
+    assert (
+        len(openai_key) >= 15 and "coloque" not in openai_key.lower()
+    ), "OPENAI_API_KEY parece placeholder."
+    assert (
+        len(serper_key) >= 10 and "coloque" not in serper_key.lower()
+    ), "SERPER_API_KEY parece placeholder."
 
 
 def test_news_query_nonempty():
@@ -66,8 +73,11 @@ def test_news_query_nonempty():
 # ------------------------------
 def test_ingest_mode_allowed_values():
     mode = os.getenv("INGEST_MODE", "").lower()
-    assert mode in {"auto", "local", "remote"}, \
-        f"INGEST_MODE inválido: '{mode}'. Use: auto | local | remote."
+    assert mode in {
+        "auto",
+        "local",
+        "remote",
+    }, f"INGEST_MODE inválido: '{mode}'. Use: auto | local | remote."
 
 
 def _split_env_urls(env_val: str) -> list[str]:
@@ -84,7 +94,9 @@ def test_srag_urls_required_when_remote():
     urls = _split_env_urls(urls_env)
 
     if mode == "remote":
-        assert urls, "INGEST_MODE=remote exige SRAG_URLS no .env (1+ URLs separadas por vírgula)."
+        assert (
+            urls
+        ), "INGEST_MODE=remote exige SRAG_URLS no .env (1+ URLs separadas por vírgula)."
 
 
 def test_orchestrator_parses_urls_like_env():
@@ -109,4 +121,3 @@ def test_orchestrator_parses_urls_like_env():
         for u in SRAG_URLS:
             assert url_re.match(u), f"URL inválida em SRAG_URLS: {u}"
             assert u == u.strip(), f"URL com espaços extras: '{u}'"
-

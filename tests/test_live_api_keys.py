@@ -1,6 +1,4 @@
-# tests/test_live_api_keys.py
 import os
-import re
 import json
 import pytest
 import requests
@@ -92,9 +90,13 @@ def test_serper_key_live_news():
     r.raise_for_status()
     data = r.json()
     # resposta deve conter lista 'news' (pode estar vazia dependendo da query)
-    assert isinstance(data, dict) and "news" in data, f"Resposta Serper inesperada: {json.dumps(data)[:300]}"
+    assert (
+        isinstance(data, dict) and "news" in data
+    ), f"Resposta Serper inesperada: {json.dumps(data)[:300]}"
 
     # valida formato básico de um item (quando houver)
     if data["news"]:
         item = data["news"][0]
-        assert "title" in item and "source" in item, "Item de notícia sem campos esperados ('title'/'source')."
+        assert (
+            "title" in item and "source" in item
+        ), "Item de notícia sem campos esperados ('title'/'source')."
