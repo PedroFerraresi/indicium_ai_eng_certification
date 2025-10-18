@@ -1,7 +1,13 @@
 from __future__ import annotations
 """
-News Tool com timeouts/retries/backoff e logs de tentativa.
-Versão com import DIRETO da OpenAI (requirements: openai>=1.42,<2).
+Ferramenta de notícias (Serper + OpenAI) com:
+- Timeouts, retries com backoff exponencial + jitter
+- Fail-fast e mensagens amigáveis (não propaga exceções)
+- Logs estruturados (audit.log_kv) incluindo latência e uso do LLM
+
+Requisitos:
+- openai>=1.42,<2
+- requests
 """
 
 import os
@@ -20,7 +26,7 @@ from src.utils.audit import log_kv
 # Carrega variáveis do .env
 load_dotenv()
 
-# Chaves e config
+# --- Config / credenciais ---
 SERPER = os.getenv("SERPER_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_SUMMARY_MODEL", "gpt-4o-mini")
@@ -29,30 +35,58 @@ API_TIMEOUT = int(os.getenv("API_TIMEOUT", "15"))
 API_MAX_RETRIES = int(os.getenv("API_MAX_RETRIES", "2"))
 API_BACKOFF_BASE = float(os.getenv("API_BACKOFF_BASE", "0.5"))
 
-# Cliente OpenAI (usa a chave do .env)
+# Mensagens amigáveis (fallbacks)
+NO_ITEMS_MSG = "Sem notícias recentes encontradas."
+NO_OPENAI_MSG = "Resumo de notícias indisponível (OPENAI_API_KEY ausente)."
+GENERIC_FAIL_MSG = "Resumo de notícias indisponível no momento."
+
+# Cliente OpenAI (chave via .env)
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def _sleep_backoff(attempt: int) -> None:
-    """Backoff exponencial com jitter leve."""
+    """Backoff exponencial com jitter leve (evita thundering herd)."""
     base = API_BACKOFF_BASE * (2 ** attempt)
     time.sleep(base + random.uniform(0, 0.25))
+
+
+def _normalize_items(items: List[Dict]) -> List[Dict]:
+    """Mantém apenas campos úteis e evita None."""
+    out: List[Dict] = []
+    for it in items:
+        out.append({
+            "title": (it.get("title") or "").strip(),
+            "source": (it.get("source") or "").strip(),
+            "link": (it.get("link") or "").strip(),
+            # mantemos publishedDate se existir (pode ajudar no futuro)
+            "date": (it.get("date") or it.get("publishedDate") or "").strip(),
+        })
+    return out
 
 
 def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[Dict]:
     """
     Busca notícias no Serper com timeout e re-tentativas para 429/5xx.
-    Fail-fast se a SERPER_API_KEY estiver ausente.
+    - Fail-fast: se SERPER_API_KEY ausente OU query vazia → retorna [].
+    - Não levanta exceção: em falhas, loga e retorna [].
     """
+    rid = run_id or "n/a"
+
+    # Sanitização defensiva
+    q = (query or "").strip()
     if not SERPER.strip():
-        log_kv(run_id or "n/a", "serper.disabled", reason="missing_api_key")
+        log_kv(rid, "serper.disabled", reason="missing_api_key")
+        return []
+    if not q:
+        log_kv(rid, "serper.skip", reason="empty_query")
         return []
 
-    num = max(1, min(int(num), 10))  # cap defensivo
+    # Limitamos 'num' a [1, 10] por cautela
+    num = max(1, min(int(num), 10))
 
     url = "https://google.serper.dev/news"
     headers = {"X-API-KEY": SERPER, "Content-Type": "application/json"}
-    payload = {"q": query, "num": num}
+    payload = {"q": q, "num": num}
 
     last_err: Optional[str] = None
     for attempt in range(API_MAX_RETRIES + 1):
@@ -62,50 +96,72 @@ def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[
             # 429/5xx → tentamos de novo
             if r.status_code in (429, 500, 502, 503, 504):
                 last_err = f"http_status={r.status_code}"
-                log_kv(run_id or "n/a", "serper.retry",
-                       attempt=attempt, status=r.status_code, query=query)
+                log_kv(rid, "serper.retry", attempt=attempt, status=r.status_code, query=q)
                 if attempt < API_MAX_RETRIES:
                     _sleep_backoff(attempt)
                     continue
-                r.raise_for_status()
+                # sem mais retries — trata abaixo como erro final
 
-            r.raise_for_status()
+            # 4xx (exceto 429) → não repetir
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                log_kv(rid, "serper.client_error", status=r.status_code, query=q)
+                return []
+
+            # OK → parseia JSON
             try:
+                r.raise_for_status()
                 data = r.json()
             except json.JSONDecodeError as e:
                 last_err = f"json_decode_error: {e}"
-                log_kv(run_id or "n/a", "serper.retry.exception",
-                       attempt=attempt, error=str(e), query=query)
+                log_kv(rid, "serper.json_error", attempt=attempt, error=str(e))
                 if attempt < API_MAX_RETRIES:
                     _sleep_backoff(attempt)
                     continue
-                raise
-            return data.get("news", [])[:num]
+                return []
+            except requests.RequestException as e:
+                # Aqui só cai se for um 429/5xx e sem retries restantes
+                last_err = str(e)
+                log_kv(rid, "serper.http_error_final", status=r.status_code, error=str(e))
+                return []
+
+            items = data.get("news", [])[:num]
+            return _normalize_items(items)
 
         except requests.RequestException as e:
+            # timeouts, DNS, conexão etc.
             last_err = str(e)
-            log_kv(run_id or "n/a", "serper.retry.exception",
-                   attempt=attempt, error=str(e), query=query)
+            log_kv(rid, "serper.retry.exception", attempt=attempt, error=str(e), query=q)
             if attempt < API_MAX_RETRIES:
                 _sleep_backoff(attempt)
                 continue
-            raise
+            # falha final
+            log_kv(rid, "serper.fail", error=last_err)
+            return []
 
-    raise RuntimeError(f"Serper failed after retries: {last_err}")
+    # Em teoria não chega aqui; apenas por segurança
+    log_kv(rid, "serper.fail.unknown", last_error=last_err)
+    return []
 
 
 def summarize_news(items: List[Dict], run_id: Optional[str] = None) -> str:
     """
     Sumariza itens com OpenAI, com timeout e retries em erros transitórios.
-    Fail-fast se a OPENAI_API_KEY estiver ausente.
+
+    Regras de fail-fast/amigáveis:
+    - Lista vazia → retorna mensagem padrão sem chamar LLM.
+    - Sem OPENAI_API_KEY → mensagem amigável e log.
+    - Qualquer falha final → mensagem amigável, sem propagar exceção.
     """
+    rid = run_id or "n/a"
+
     if not items:
-        return "Sem notícias recentes encontradas."
+        return NO_ITEMS_MSG
 
     if not OPENAI_API_KEY.strip():
-        log_kv(run_id or "n/a", "openai.disabled", reason="missing_api_key")
-        return "Resumo de notícias indisponível (OPENAI_API_KEY ausente)."
+        log_kv(rid, "openai.disabled", reason="missing_api_key")
+        return NO_OPENAI_MSG
 
+    # Constrói bullets para o prompt
     bullets = "\n".join(
         f"- {i.get('title')} ({i.get('source')}) – {i.get('link')}" for i in items
     )
@@ -130,7 +186,7 @@ def summarize_news(items: List[Dict], run_id: Optional[str] = None) -> str:
 
             usage = getattr(resp, "usage", None)
             log_kv(
-                run_id or "n/a",
+                rid,
                 "llm.openai.usage",
                 model=OPENAI_MODEL,
                 duration_ms=dt_ms,
@@ -141,26 +197,27 @@ def summarize_news(items: List[Dict], run_id: Optional[str] = None) -> str:
             )
             return resp.choices[0].message.content.strip()
 
-        # Retries explícitos para erros transitórios
+        # Erros transitórios com retries explícitos
         except (RateLimitError, APIConnectionError, APITimeoutError) as e:
             last_err = str(e)
-            log_kv(run_id or "n/a", "openai.retry",
-                   attempt=attempt, retryable=True, error=last_err)
+            log_kv(rid, "openai.retry", attempt=attempt, retryable=True, error=last_err)
             if attempt < API_MAX_RETRIES:
                 _sleep_backoff(attempt)
                 continue
-            raise
+            log_kv(rid, "openai.fail", error=last_err)
+            return GENERIC_FAIL_MSG
 
-        # Fallback genérico (qualquer outro erro não-óbvio)
+        # Outros erros (tenta detectar por string se é retryable)
         except Exception as e:
             last_err = str(e)
-            # tenta reconhecer erros “retryable” por mensagem
             retryable = any(x in last_err for x in ("429", "RateLimit", "timeout", "Connection"))
-            log_kv(run_id or "n/a", "openai.retry",
-                   attempt=attempt, retryable=retryable, error=last_err)
+            log_kv(rid, "openai.retry", attempt=attempt, retryable=retryable, error=last_err)
             if retryable and attempt < API_MAX_RETRIES:
                 _sleep_backoff(attempt)
                 continue
-            raise
+            log_kv(rid, "openai.fail", error=last_err)
+            return GENERIC_FAIL_MSG
 
-    raise RuntimeError(f"OpenAI summarize failed after retries: {last_err}")
+    # Segurança (não deve chegar aqui)
+    log_kv(rid, "openai.fail.unknown", last_error=last_err)
+    return GENERIC_FAIL_MSG
