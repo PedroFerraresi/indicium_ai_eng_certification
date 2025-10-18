@@ -137,9 +137,7 @@ def _fetch_last_two_months(eng, uf: str) -> list[tuple[str, int]]:
         ).fetchall()
 
 
-def _fetch_single_pair(
-    eng, uf: str, fields: str
-) -> tuple[int | None, int | None]:
+def _fetch_single_pair(eng, uf: str, fields: str) -> tuple[int | None, int | None]:
     """
     Helper genérico para obter (x, cases) do mês mais recente em srag_monthly.
     Ex.: fields="deaths, cases"   ou   fields="icu_cases, cases"
