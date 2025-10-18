@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import os
 import sys
+
 from dotenv import load_dotenv
 
-from src.utils.cli import parse_args
 from src.agents.orchestrator import run_pipeline
+from src.utils.cli import parse_args
 
 
 def main() -> int:

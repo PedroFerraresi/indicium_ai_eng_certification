@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+
 from src.reports.renderer import render_html
 
 

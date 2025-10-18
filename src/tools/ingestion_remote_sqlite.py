@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import io
-import zipfile
-import requests
 import os
+import zipfile
 
 import pandas as pd
+import requests
 from sqlalchemy import text
-from typing import List
 
 from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
 
@@ -88,7 +87,7 @@ def _post_clean(df: pd.DataFrame, uf_default: str) -> pd.DataFrame:
     return df[["DT_SIN_PRI", "EVOLUCAO", "UTI", "VACINA_COV", "UF"]]
 
 
-def _read_csv_like(fobj, usecols: List[str]) -> pd.DataFrame:
+def _read_csv_like(fobj, usecols: list[str]) -> pd.DataFrame:
     """
     Lê CSV a partir de um file-like com tolerância a encoding e linhas ruins.
     Tenta utf-8; se falhar, cai para latin-1.
@@ -137,7 +136,7 @@ def _read_csv_like(fobj, usecols: List[str]) -> pd.DataFrame:
         )
 
 
-def _download_selective(url: str, wanted_cols: List[str]) -> pd.DataFrame:
+def _download_selective(url: str, wanted_cols: list[str]) -> pd.DataFrame:
     """
     Baixa a URL (CSV ou ZIP) e carrega apenas colunas desejadas (intersecção com o cabeçalho).
     Em ZIP: escolhe o MAIOR .csv do pacote (típico dataset principal).
@@ -163,7 +162,7 @@ def _download_selective(url: str, wanted_cols: List[str]) -> pd.DataFrame:
 
 
 # ------------------ Pipeline ------------------ #
-def ingest_remote(engine_fn, uf_default: str, cols: List[str], urls: List[str]):
+def ingest_remote(engine_fn, uf_default: str, cols: list[str], urls: list[str]):
     """
     Ingestão remota:
     - Baixa cada URL, aplica limpeza/padronização e materializa no SQLite.

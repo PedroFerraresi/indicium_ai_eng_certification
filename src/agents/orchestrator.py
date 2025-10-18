@@ -1,28 +1,29 @@
 from __future__ import annotations
 
+from datetime import datetime
 import os
 from pathlib import Path
-from typing import TypedDict, Optional, Any, Dict
-from datetime import datetime
-from langgraph.graph import StateGraph, END
+from typing import Any, TypedDict
+
+from langgraph.graph import END, StateGraph
+
+# Relatório e gráficos
+from src.reports.renderer import html_to_pdf, plot_series, render_html
 
 # Ingestão + métricas
 from src.tools.database_orchestrator_sqlite import (
-    ingest as ingest_csvs,
     compute_metrics,
+    ingest as ingest_csvs,
 )
 
 # Notícias (busca + sumarização) — news.py já tem timeouts/retries/backoff
 from src.tools.news import search_news, summarize_news
 
-# Relatório e gráficos
-from src.reports.renderer import plot_series, render_html, html_to_pdf
-
 # Auditoria estruturada
-from src.utils.audit import new_run_id, audit_span, log_kv
+from src.utils.audit import audit_span, log_kv, new_run_id
 
 # Validações e clamp de datas
-from src.utils.validation import validate_uf, clamp_future_dates
+from src.utils.validation import clamp_future_dates, validate_uf
 
 """
 Orquestrador do pipeline (LangGraph).
@@ -57,10 +58,10 @@ class AgentState(TypedDict, total=False):
     metrics: dict[str, Any]
     news_items: list
     news_summary: str
-    chart_30d: Optional[str]
-    chart_12m: Optional[str]
+    chart_30d: str | None
+    chart_12m: str | None
     html_path: str
-    pdf_path: Optional[str]
+    pdf_path: str | None
 
 
 def node_ingest(state: AgentState):
@@ -156,7 +157,7 @@ def node_report(state: AgentState):
         # --- Caminhos relativos em formato POSIX ('/') independentemente do SO
         reports_dir = Path("resources/reports")
 
-        def _rel_posix(p: Optional[str]) -> Optional[str]:
+        def _rel_posix(p: str | None) -> str | None:
             if not p:
                 return None
             # os.path.relpath calcula a relatividade correta; Path(...).as_posix() normaliza para '/'
@@ -203,7 +204,7 @@ def build_graph():
 graph = build_graph()
 
 
-def run_pipeline(uf: str) -> Dict[str, Any]:
+def run_pipeline(uf: str) -> dict[str, Any]:
     """
     Executa o grafo para a UF informada e retorna um dicionário CANÔNICO.
     """
@@ -215,7 +216,7 @@ def run_pipeline(uf: str) -> Dict[str, Any]:
         final_state: AgentState = graph.invoke(initial_state)
 
     # Normaliza a saída para respeitar o contrato
-    canonical_out: Dict[str, Any] = {
+    canonical_out: dict[str, Any] = {
         "uf": final_state.get("uf", uf),
         "metrics": final_state.get("metrics", {}),
         "news_summary": final_state.get(

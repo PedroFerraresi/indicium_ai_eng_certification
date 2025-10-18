@@ -1,8 +1,9 @@
-import os
 import json
+import os
+
+from dotenv import find_dotenv, load_dotenv
 import pytest
 import requests
-from dotenv import load_dotenv, find_dotenv
 
 # Carrega .env uma vez
 load_dotenv(find_dotenv(usecwd=True), override=False)

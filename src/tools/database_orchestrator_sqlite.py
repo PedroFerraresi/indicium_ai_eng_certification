@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
 import glob
-from typing import List, Dict, Any, Tuple, Optional
+import os
+from typing import Any
 
+from dotenv import find_dotenv, load_dotenv
 import pandas as pd
 from sqlalchemy import create_engine, text
-from dotenv import load_dotenv, find_dotenv
 
 from src.tools.ingestion_local_sqlite import ingest_local
 from src.tools.ingestion_remote_sqlite import ingest_remote
@@ -35,17 +35,17 @@ UF_DEFAULT = os.getenv("UF_INICIAL", "SP")
 INGEST_MODE = os.getenv("INGEST_MODE", "auto").lower()  # auto | local | remote
 
 
-def _parse_urls(env_val: str | None) -> List[str]:
+def _parse_urls(env_val: str | None) -> list[str]:
     """Divide SRAG_URLS por vírgula e remove espaços vazios."""
     if not env_val:
         return []
     return [u.strip() for u in env_val.split(",") if u.strip()]
 
 
-SRAG_URLS: List[str] = _parse_urls(os.getenv("SRAG_URLS", ""))
+SRAG_URLS: list[str] = _parse_urls(os.getenv("SRAG_URLS", ""))
 
 # Colunas presentes nos CSVs SRAG 2024/2025 (núcleo mínimo que usamos)
-COLS: List[str] = [
+COLS: list[str] = [
     "DT_SIN_PRI",
     "EVOLUCAO",
     "UTI",
@@ -119,7 +119,7 @@ def ingest() -> None:
 # -----------------------------------------------------------------------------
 # Métricas
 # -----------------------------------------------------------------------------
-def _fetch_last_two_months(eng, uf: str) -> List[Tuple[str, int]]:
+def _fetch_last_two_months(eng, uf: str) -> list[tuple[str, int]]:
     """
     Busca os dois meses mais recentes (month, cases) para a UF.
     Retorna lista possivelmente vazia.
@@ -139,7 +139,7 @@ def _fetch_last_two_months(eng, uf: str) -> List[Tuple[str, int]]:
 
 def _fetch_single_pair(
     eng, uf: str, fields: str
-) -> Tuple[Optional[int], Optional[int]]:
+) -> tuple[int | None, int | None]:
     """
     Helper genérico para obter (x, cases) do mês mais recente em srag_monthly.
     Ex.: fields="deaths, cases"   ou   fields="icu_cases, cases"
@@ -160,7 +160,7 @@ def _fetch_single_pair(
     return None, None
 
 
-def compute_metrics(uf: str | None = None) -> Dict[str, Any]:
+def compute_metrics(uf: str | None = None) -> dict[str, Any]:
     """
     Calcula:
       - increase_rate     : Δ% do mês atual vs mês anterior

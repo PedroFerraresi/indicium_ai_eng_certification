@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pandas as pd
 import datetime
+
+import pandas as pd
 
 """
 Validações de entrada (UF, datas).

@@ -1,15 +1,15 @@
 # src/utils/audit.py
 from __future__ import annotations
 
-import os
-import json
-import time
-import uuid
-import hashlib
-import traceback
 from contextlib import contextmanager
 import datetime
-from typing import Any, Dict, Optional
+import hashlib
+import json
+import os
+import time
+import traceback
+from typing import Any
+import uuid
 
 """
 Utilitários de auditoria/observabilidade.
@@ -72,7 +72,7 @@ _SENSITIVE_KEYS = {
 }
 
 
-def _sanitize_value(v: Any, key_hint: Optional[str] = None) -> Any:
+def _sanitize_value(value: Any, key_hint: str | None = None) -> Any:
     """
     Sanitiza recursivamente valores de dicionários/listas:
     - Se chave é sensível (em qualquer nível) -> "[REDACTED]"
@@ -81,10 +81,10 @@ def _sanitize_value(v: Any, key_hint: Optional[str] = None) -> Any:
     - Strings muito longas são truncadas para evitar vazamento acidental
     """
     # Dicionários
-    if isinstance(v, dict):
-        out: Dict[str, Any] = {}
-        for k, vv in v.items():
-            kl = str(k).lower()
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, vv in value.items():
+            kl = str(key).lower()
 
             # Campos sensíveis por nome (em qualquer nível)
             if (
@@ -92,16 +92,16 @@ def _sanitize_value(v: Any, key_hint: Optional[str] = None) -> Any:
                 or kl.endswith("api_key")
                 or kl.endswith("access_token")
             ):
-                out[k] = "[REDACTED]"
+                out[key] = "[REDACTED]"
                 continue
 
             # Prompt: substitui por hash + preview (independente do nível)
             if kl == "prompt":
                 if isinstance(vv, str):
-                    out[k] = {"sha": _hash(vv), "preview": _truncate(vv, 300)}
+                    out[key] = {"sha": _hash(vv), "preview": _truncate(vv, 300)}
                 else:
                     # prompt não-string -> sanitiza recursivamente
-                    out[k] = _sanitize_value(vv, kl)
+                    out[key] = _sanitize_value(vv, kl)
                 continue
 
             # Messages (padrão OpenAI): não logar conteúdo bruto
@@ -111,26 +111,26 @@ def _sanitize_value(v: Any, key_hint: Optional[str] = None) -> Any:
                 except Exception:
                     txt = str(vv)
                 count = len(vv) if isinstance(vv, list) else None
-                out[k] = {"sha": _hash(txt), "count": count}
+                out[key] = {"sha": _hash(txt), "count": count}
                 continue
 
             # Caso geral: segue recursivamente
-            out[k] = _sanitize_value(vv, kl)
+            out[key] = _sanitize_value(vv, kl)
         return out
 
     # Listas / tuplas
-    if isinstance(v, (list, tuple)):
-        return [_sanitize_value(x, key_hint) for x in v]
+    if isinstance(value, list | tuple):
+        return [_sanitize_value(x, key_hint) for x in value]
 
     # Strings: truncamento defensivo (ex.: stack traces gigantes)
-    if isinstance(v, str):
-        return _truncate(v, 1000)
+    if isinstance(value, str):
+        return _truncate(value, 1000)
 
     # Demais tipos permanecem
-    return v
+    return value
 
 
-def sanitize_payload(d: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_payload(d: dict[str, Any]) -> dict[str, Any]:
     """
     Remove/mascara campos sensíveis sem perder rastreabilidade.
     - Aplica-se recursivamente em qualquer nível.
@@ -171,7 +171,7 @@ def new_run_id() -> str:
 
 
 @contextmanager
-def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
+def audit_span(event: str, run_id: str, node: str | None = None, **ctx):
     """
     Context manager para instrumentar um “span”.
     Registra: <event>.start / <event>.end / <event>.error

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import os
-import time
 import json
+import os
 import random
-import requests
-from typing import List, Dict, Optional
+import time
 from time import perf_counter
 
 from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError, APIConnectionError, APITimeoutError
+from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+import requests
 
 from src.utils.audit import log_kv
-
 
 """
 Ferramenta de notícias (Serper + OpenAI) com:
@@ -52,9 +50,9 @@ def _sleep_backoff(attempt: int) -> None:
     time.sleep(base + random.uniform(0, 0.25))
 
 
-def _normalize_items(items: List[Dict]) -> List[Dict]:
+def _normalize_items(items: list[dict]) -> list[dict]:
     """Mantém apenas campos úteis e evita None."""
-    out: List[Dict] = []
+    out: list[dict] = []
     for it in items:
         out.append(
             {
@@ -68,7 +66,7 @@ def _normalize_items(items: List[Dict]) -> List[Dict]:
     return out
 
 
-def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[Dict]:
+def search_news(query: str, num: int = 5, run_id: str | None = None) -> list[dict]:
     """
     Busca notícias no Serper com timeout e re-tentativas para 429/5xx.
     - Fail-fast: se SERPER_API_KEY ausente OU query vazia → retorna [].
@@ -92,7 +90,7 @@ def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[
     headers = {"X-API-KEY": SERPER, "Content-Type": "application/json"}
     payload = {"q": q, "num": num}
 
-    last_err: Optional[str] = None
+    last_err: str | None = None
     for attempt in range(API_MAX_RETRIES + 1):
         try:
             r = requests.post(url, json=payload, headers=headers, timeout=API_TIMEOUT)
@@ -153,7 +151,7 @@ def search_news(query: str, num: int = 5, run_id: Optional[str] = None) -> List[
     return []
 
 
-def summarize_news(items: List[Dict], run_id: Optional[str] = None) -> str:
+def summarize_news(items: list[dict], run_id: str | None = None) -> str:
     """
     Sumariza itens com OpenAI, com timeout e retries em erros transitórios.
 
@@ -182,7 +180,7 @@ def summarize_news(items: List[Dict], run_id: Optional[str] = None) -> str:
         f"Manchetes:\n{bullets}"
     )
 
-    last_err: Optional[str] = None
+    last_err: str | None = None
     for attempt in range(API_MAX_RETRIES + 1):
         try:
             t0 = perf_counter()

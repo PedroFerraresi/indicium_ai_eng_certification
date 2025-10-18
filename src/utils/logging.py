@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import time
-from typing import Any, Dict
+from typing import Any
 
 """
 Utilitário simples de logging estruturado:
@@ -13,7 +13,7 @@ Utilitário simples de logging estruturado:
 
 
 def log_event(
-    name: str, payload: Dict[str, Any], folder: str = "resources/json"
+    name: str, payload: dict[str, Any], folder: str = "resources/json"
 ) -> str:
     """
     Salva um JSON com timestamp (ms) e nome do evento.

@@ -1,6 +1,7 @@
 # tests/test_report_contract.py
 import pathlib
 import re
+
 from src.reports.renderer import render_html
 
 

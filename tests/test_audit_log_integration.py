@@ -17,6 +17,7 @@ e depois rode:
 
 import json
 import pathlib
+
 import pytest
 
 pytestmark = pytest.mark.integration  # marca como teste de integração

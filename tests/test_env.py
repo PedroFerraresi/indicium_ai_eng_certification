@@ -1,8 +1,9 @@
 import os
-import re
 import pathlib
+import re
+
+from dotenv import find_dotenv, load_dotenv
 import pytest
-from dotenv import load_dotenv, find_dotenv
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -105,7 +106,7 @@ def test_orchestrator_parses_urls_like_env():
     Também valida formato básico das URLs (http/https, .csv ou .zip).
     """
     # importa após load_dotenv
-    from src.tools.database_orchestrator_sqlite import SRAG_URLS, INGEST_MODE, DB_PATH
+    from src.tools.database_orchestrator_sqlite import DB_PATH, INGEST_MODE, SRAG_URLS
 
     # 1) INGEST_MODE e DB_PATH sincronizados com o .env
     assert INGEST_MODE == os.getenv("INGEST_MODE", "").lower()

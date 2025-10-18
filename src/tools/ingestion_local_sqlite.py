@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
-import zipfile
 import glob
 import io
-from typing import List
+import os
+import zipfile
+
 import pandas as pd
 from sqlalchemy import text
 
@@ -81,7 +81,7 @@ def _post_clean(df: pd.DataFrame, uf_default: str) -> pd.DataFrame:
     return df[["DT_SIN_PRI", "EVOLUCAO", "UTI", "VACINA_COV", "UF"]]
 
 
-def _read_csv_like(fobj, wanted_cols: List[str]) -> pd.DataFrame:
+def _read_csv_like(fobj, wanted_cols: list[str]) -> pd.DataFrame:
     """
     Lê CSV a partir de um file-like com tolerância a encoding e linhas ruins.
     Tenta utf-8; se falhar, cai para latin-1. Sempre usa a interseção de colunas.
@@ -128,7 +128,7 @@ def _read_csv_like(fobj, wanted_cols: List[str]) -> pd.DataFrame:
         )
 
 
-def _read_csv_from_zip(path: str, wanted_cols: List[str]) -> pd.DataFrame:
+def _read_csv_from_zip(path: str, wanted_cols: list[str]) -> pd.DataFrame:
     """
     Abre um ZIP local e escolhe o **maior** .csv para ler (dataset principal).
     """
@@ -141,7 +141,7 @@ def _read_csv_from_zip(path: str, wanted_cols: List[str]) -> pd.DataFrame:
             return _read_csv_like(f, wanted_cols)
 
 
-def _read_csv_selective(path: str, wanted_cols: List[str]) -> pd.DataFrame:
+def _read_csv_selective(path: str, wanted_cols: list[str]) -> pd.DataFrame:
     """
     Lê CSV/ZIP local carregando apenas as colunas disponíveis de 'wanted_cols'.
     """
@@ -155,7 +155,7 @@ def _read_csv_selective(path: str, wanted_cols: List[str]) -> pd.DataFrame:
 
 
 # ------------------ Pipeline ------------------ #
-def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "data/raw"):
+def ingest_local(engine_fn, uf_default: str, cols: list[str], folder: str = "data/raw"):
     """
     Ingestão local:
     - Lê todos os .csv/.zip do diretório informado.

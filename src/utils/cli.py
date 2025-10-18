@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import argparse
+import os
 
 """
 Utilitários de CLI para o projeto.

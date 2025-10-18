@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Any, Optional
-
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 
 """
 renderer.py
@@ -97,7 +96,7 @@ def _jinja_env() -> Environment:
 
 
 def render_html(
-    context: Dict[str, Any],
+    context: dict[str, Any],
     template_name: str = "report.html.j2",
     out_name: str = "relatorio.html",
 ) -> str:
@@ -106,9 +105,9 @@ def render_html(
     Bloqueia DataFrames/Series no contexto por privacidade.
     """
     # PRIVACY GUARD
-    for k, v in context.items():
-        if isinstance(v, (pd.DataFrame, pd.Series)):
-            raise ValueError(f"Contexto contém dados tabulares não permitidos: {k}")
+    for key, value in context.items():
+        if isinstance(value, pd.DataFrame | pd.Series):
+            raise ValueError(f"Contexto contém dados tabulares não permitidos: {key}")
 
     # Normaliza caminhos de gráficos para POSIX ('/') — necessário no Windows
     for key in ("chart_30d", "chart_12m"):
@@ -125,7 +124,7 @@ def render_html(
 
 
 # === 3) HTML -> PDF (xhtml2pdf) ==============================================
-def html_to_pdf(html_path: str) -> Optional[str]:
+def html_to_pdf(html_path: str) -> str | None:
     """
     Converte o HTML em PDF usando xhtml2pdf (pure-Python).
     Retorna o caminho do PDF ou None (se indisponível/erro).

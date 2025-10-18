@@ -18,6 +18,7 @@ Usa monkeypatch para trocar as funções internas por stubs determinísticos.
 """
 
 import pathlib
+
 import pandas as pd
 
 import src.agents.orchestrator as orch_mod  # importa o módulo para monkeypatch em seu namespace
@@ -113,15 +114,15 @@ def test_run_pipeline_contract(monkeypatch, tmp_path):
     assert isinstance(out["news_summary"], str)
 
     # charts: como fornecemos séries não vazias, devem estar preenchidos
-    assert isinstance(out["chart_30d"], (str, type(None)))
-    assert isinstance(out["chart_12m"], (str, type(None)))
+    assert isinstance(out["chart_30d"], str | type(None))
+    assert isinstance(out["chart_12m"], str | type(None))
     # no caminho default do orquestrador, os nomes são estes:
     # (não exigimos existência física dos arquivos — o plot foi stubado)
     assert out["chart_30d"] == "resources/charts/casos_30d.png"
     assert out["chart_12m"] == "resources/charts/casos_12m.png"
 
     # HTML sempre deve vir string com caminho; PDF pode ser None
-    assert isinstance(out["html_path"], (str, type(None)))
+    assert isinstance(out["html_path"], str | type(None))
     assert out["pdf_path"] is None
 
     # O stub do HTML gravou no tmp; garanta que o arquivo citado existe

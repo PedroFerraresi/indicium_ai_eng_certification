@@ -9,6 +9,7 @@ Cenário:
 """
 
 import importlib
+
 import requests
 
 

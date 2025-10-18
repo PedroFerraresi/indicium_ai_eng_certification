@@ -1,7 +1,9 @@
 # tests/test_validation.py
 import datetime
+
 import pandas as pd
-from src.utils.validation import validate_uf, clamp_future_dates
+
+from src.utils.validation import clamp_future_dates, validate_uf
 
 
 def test_validate_uf_ok():

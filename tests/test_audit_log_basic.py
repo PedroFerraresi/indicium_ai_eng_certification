@@ -1,6 +1,6 @@
+import importlib
 import json
 import pathlib
-import importlib
 
 """
 Teste UNITÁRIO do módulo de auditoria (src/utils/audit.py).
