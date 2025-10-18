@@ -11,24 +11,29 @@ SRAG_URLS: lista separada por vírgulas com as URLs CSV/ZIP do OpenDATASUS.
 Ex.: SRAG_URLS=https://.../INFLUD24.csv,https://.../INFLUD25.csv
 """
 
-import os, glob
-from typing import List
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+import os
+import glob
+from typing import List, Dict, Any, Tuple, Optional
+
 import pandas as pd
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv, find_dotenv
 
 from src.tools.ingestion_local_sqlite import ingest_local
 from src.tools.ingestion_remote_sqlite import ingest_remote
 
-# --- ENV & Config ------------------------------------------------------------
-load_dotenv()
+# -----------------------------------------------------------------------------
+# ENV & Config
+# -----------------------------------------------------------------------------
+# Carrega .env a partir da raiz do projeto (sem sobrescrever env já setado)
+load_dotenv(find_dotenv(usecwd=True), override=False)
 
 DB_PATH = os.getenv("DB_PATH", "data/srag.sqlite")
 UF_DEFAULT = os.getenv("UF_INICIAL", "SP")
 INGEST_MODE = os.getenv("INGEST_MODE", "auto").lower()  # auto | local | remote
 
-# Parse SRAG_URLS do .env (lista separada por vírgulas)
 def _parse_urls(env_val: str | None) -> List[str]:
+    """Divide SRAG_URLS por vírgula e remove espaços vazios."""
     if not env_val:
         return []
     return [u.strip() for u in env_val.split(",") if u.strip()]
@@ -48,17 +53,24 @@ COLS: List[str] = [
     "SG_UF_RES",
 ]
 
-os.makedirs("data", exist_ok=True)
+# Garante diretório do arquivo do banco (se DB_PATH possuir subpastas)
+db_dir = os.path.dirname(DB_PATH) or "."
+os.makedirs(db_dir, exist_ok=True)
 
 
-# --- Infra -------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Infra
+# -----------------------------------------------------------------------------
 def _engine():
     """Cria engine SQLAlchemy para o arquivo SQLite."""
+    # future=True habilita comportamentos da 2.x
     return create_engine(f"sqlite:///{DB_PATH}", future=True)
 
 
-# --- Orquestração ------------------------------------------------------------
-def ingest():
+# -----------------------------------------------------------------------------
+# Orquestração de ingestão
+# -----------------------------------------------------------------------------
+def ingest() -> None:
     """
     Decide e executa a ingestão com base em:
       - Conteúdo de data/raw (quando INGEST_MODE=auto)
@@ -66,11 +78,12 @@ def ingest():
       - SRAG_URLS (para modo remoto)
     """
     # Detecta presença de arquivos locais
+    raw_glob = os.path.join("data", "raw", "*")
     raw_csvs = glob.glob(os.path.join("data", "raw", "*.csv"))
     raw_zips = glob.glob(os.path.join("data", "raw", "*.zip"))
-    has_local = len(raw_csvs) + len(raw_zips) > 0
+    has_local = (len(raw_csvs) + len(raw_zips)) > 0
 
-    # Força modo conforme .env
+    # Seleciona modo conforme .env
     if INGEST_MODE == "local":
         has_local = True
         print("⚙️  INGEST_MODE=local → usando ingestão local (data/raw).")
@@ -78,11 +91,10 @@ def ingest():
         has_local = False
         print("⚙️  INGEST_MODE=remote → usando ingestão remota (SRAG_URLS).")
     else:
-        # auto
         print("⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto).")
 
     if has_local:
-        print("📦 Detectados arquivos locais em data/raw/ → ingestão local.")
+        print(f"📦 Detectados arquivos locais em {raw_glob} → ingestão local.")
         ingest_local(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw")
     else:
         if not SRAG_URLS:
@@ -94,8 +106,49 @@ def ingest():
         ingest_remote(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=SRAG_URLS)
 
 
-# --- Métricas ----------------------------------------------------------------
-def compute_metrics(uf: str | None = None) -> dict:
+# -----------------------------------------------------------------------------
+# Métricas
+# -----------------------------------------------------------------------------
+def _fetch_last_two_months(eng, uf: str) -> List[Tuple[str, int]]:
+    """
+    Busca os dois meses mais recentes (month, cases) para a UF.
+    Retorna lista possivelmente vazia.
+    """
+    with eng.begin() as conn:
+        return conn.execute(
+            text("""
+                SELECT month, cases
+                FROM srag_monthly
+                WHERE uf = :uf
+                ORDER BY month DESC
+                LIMIT 2
+            """),
+            {"uf": uf},
+        ).fetchall()
+
+
+def _fetch_single_pair(eng, uf: str, fields: str) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Helper genérico para obter (x, cases) do mês mais recente em srag_monthly.
+    Ex.: fields="deaths, cases"   ou   fields="icu_cases, cases"
+    """
+    with eng.begin() as conn:
+        row = conn.execute(
+            text(f"""
+                SELECT {fields}
+                FROM srag_monthly
+                WHERE uf = :uf
+                ORDER BY month DESC
+                LIMIT 1
+            """),
+            {"uf": uf},
+        ).one_or_none()
+    if row:
+        return row[0], row[1]
+    return None, None
+
+
+def compute_metrics(uf: str | None = None) -> Dict[str, Any]:
     """
     Calcula:
       - increase_rate     : Δ% do mês atual vs mês anterior
@@ -106,19 +159,15 @@ def compute_metrics(uf: str | None = None) -> dict:
     Séries:
       - series_30d : casos diários últimos 30 dias
       - series_12m : casos mensais últimos 12 meses
+
+    Retorna dicionário com KPIs + DataFrames.
     """
-    uf = uf or UF_DEFAULT
+    uf = (uf or UF_DEFAULT)
+
     eng = _engine()
 
-    with eng.begin() as conn:
-        last_two = conn.execute(text("""
-            SELECT month, cases
-            FROM srag_monthly
-            WHERE uf = :uf
-            ORDER BY month DESC
-            LIMIT 2;
-        """), {"uf": uf}).fetchall()
-
+    # --- A) Taxa de aumento mês a mês ---------------------------------------
+    last_two = _fetch_last_two_months(eng, uf)  # [(month, cases), ...] desc
     current_cases = prev_cases = None
     if last_two:
         current_cases = last_two[0][1]
@@ -131,32 +180,39 @@ def compute_metrics(uf: str | None = None) -> dict:
         else None
     )
 
-    def _pair(sql: str):
-        with eng.begin() as c:
-            r = c.execute(text(sql), {"uf": uf}).one_or_none()
-        return (r[0], r[1]) if r else (None, None)
-
-    deaths, cases_m = _pair("SELECT deaths, cases FROM srag_monthly WHERE uf=:uf ORDER BY month DESC LIMIT 1;")
-    icu,    cases_i = _pair("SELECT icu_cases, cases FROM srag_monthly WHERE uf=:uf ORDER BY month DESC LIMIT 1;")
-    vax,    cases_v = _pair("SELECT vaccinated_cases, cases FROM srag_monthly WHERE uf=:uf ORDER BY month DESC LIMIT 1;")
+    # --- B) Taxas do mês mais recente ---------------------------------------
+    deaths, cases_m = _fetch_single_pair(eng, uf, "deaths, cases")
+    icu,    cases_i = _fetch_single_pair(eng, uf, "icu_cases, cases")
+    vax,    cases_v = _fetch_single_pair(eng, uf, "vaccinated_cases, cases")
 
     mortality_rate   = (deaths / cases_m) if cases_m else None
     icu_rate         = (icu    / cases_i) if cases_i else None
     vaccination_rate = (vax    / cases_v) if cases_v else None
 
-    last_30 = pd.read_sql_query("""
+    # --- C) Séries (últimos 30 dias / 12 meses) ------------------------------
+    # Observação: usamos filtros relativos ao "agora" do SQLite; caso deseje
+    # filtrar até o último dia/mês disponível no dataset, ajuste aqui.
+    last_30 = pd.read_sql_query(
+        """
         SELECT day, cases
         FROM srag_daily
         WHERE uf = ? AND day >= date('now','-30 day')
-        ORDER BY day;
-    """, eng, params=(uf,))
+        ORDER BY day
+        """,
+        eng,
+        params=(uf,),
+    )
 
-    last_12 = pd.read_sql_query("""
+    last_12 = pd.read_sql_query(
+        """
         SELECT month, cases
         FROM srag_monthly
         WHERE uf = ? AND month >= date('now','-12 month')
-        ORDER BY month;
-    """, eng, params=(uf,))
+        ORDER BY month
+        """,
+        eng,
+        params=(uf,),
+    )
 
     return {
         "uf": uf,
@@ -164,8 +220,8 @@ def compute_metrics(uf: str | None = None) -> dict:
         "mortality_rate": mortality_rate,
         "icu_rate": icu_rate,
         "vaccination_rate": vaccination_rate,
-        "series_30d": last_30,
-        "series_12m": last_12,
+        "series_30d": last_30,   # DataFrame com colunas: day, cases
+        "series_12m": last_12,   # DataFrame com colunas: month, cases
         "current_cases": current_cases,
         "prev_cases": prev_cases,
     }

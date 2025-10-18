@@ -2,73 +2,141 @@ from __future__ import annotations
 """
 Ingestão local para SQLite (CSV/ZIP em data/raw/) — schema SRAG 2024/2025.
 
-Ajustes importantes:
-- Leitura seletiva (usecols) para só carregar colunas necessárias.
-- Construção segura de UF a partir de ['SG_UF_NOT','SG_UF','SG_UF_RES'].
+Robustez adicionada:
+- Leitura seletiva (usecols) a partir da interseção com o cabeçalho real.
+- Em ZIP: escolhe o MAIOR .csv do pacote (evita pegar dicionários de dados).
+- Tolerância a encoding (utf-8 → fallback para latin-1) e on_bad_lines="skip".
+- UF derivada e validada contra o conjunto de UFs (fallback para uf_default).
 - Datas robustas (detecta ISO YYYY-MM-DD vs DD/MM/YYYY).
-- Cria EVOLUCAO/UTI/VACINA_COV com 0 se ausentes.
-- Um statement por execute() (requisito do SQLite).
+- Cria EVOLUCAO/UTI/VACINA_COV com 0 se ausentes (dtype pandas Int8).
+- Um statement por execute() (compatível com SQLite).
+- Índices (base/daily/monthly) para acelerar consultas posteriores.
 """
 
-import os, zipfile, glob, io, re
+import os, zipfile, glob, io
+from typing import List
 import pandas as pd
 from sqlalchemy import text
 
-UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]  # ordem de preferência
+from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
 
+# Ordem de preferência para detectar UF nos CSVs
+UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]
+
+
+# ------------------ Helpers ------------------ #
 def _detect_date_parse(series: pd.Series) -> pd.Series:
+    """Detecta formato ISO (YYYY-MM-DD) vs dd/mm/YYYY e faz parse robusto."""
     s = series.astype(str)
     is_iso_like = s.str.match(r"\d{4}-\d{2}-\d{2}$").mean() > 0.5
     if is_iso_like:
         return pd.to_datetime(series, errors="coerce")
     return pd.to_datetime(series, errors="coerce", dayfirst=True)
 
+
+def _normalize_uf(raw: pd.Series | str, uf_default: str) -> pd.Series:
+    """
+    Normaliza UF para duas letras maiúsculas e valida no conjunto VALID_UFS.
+    Se não for série ou se valor inválido, cai para uf_default.
+    """
+    if isinstance(raw, pd.Series):
+        u = raw.astype(str).str.upper().str[:2]
+        u = u.where(u.isin(VALID_UFS), other=uf_default)
+        return u.fillna(uf_default)
+    # string ou vazio
+    u = (str(raw).upper()[:2]) if raw else uf_default
+    return u if u in VALID_UFS else uf_default
+
+
 def _post_clean(df: pd.DataFrame, uf_default: str) -> pd.DataFrame:
-    # DT_SIN_PRI
+    """Padroniza colunas, datas e flags para o pipeline."""
+    # Data do primeiro sintoma
     if "DT_SIN_PRI" in df.columns:
         df["DT_SIN_PRI"] = _detect_date_parse(df["DT_SIN_PRI"])
     else:
         df["DT_SIN_PRI"] = pd.NaT
 
-    # UF derivada
+    # Deriva UF a partir da primeira coluna candidata existente
     uf_series = None
     for c in UF_CANDIDATES:
         if c in df.columns:
-            uf_series = df[c].astype(str).str.upper().str[:2]
+            uf_series = df[c]
             break
-    df["UF"] = (uf_series if uf_series is not None else uf_default)
-    if isinstance(df["UF"], pd.Series):
-        df["UF"] = df["UF"].fillna(uf_default)
+    df["UF"] = _normalize_uf(uf_series if uf_series is not None else uf_default, uf_default)
 
-    # Flags numéricas
+    # Flags numéricas (coerção defensiva)
     for col in ["EVOLUCAO", "UTI", "VACINA_COV"]:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("Int8")
         else:
-            df[col] = 0
+            df[col] = pd.Series(0, index=df.index, dtype="Int8")
 
-    # Seleção final mínima
+    # Apenas as colunas padronizadas
     return df[["DT_SIN_PRI", "EVOLUCAO", "UTI", "VACINA_COV", "UF"]]
 
-def _read_csv_selective(path: str, wanted_cols: list[str]) -> pd.DataFrame:
+
+def _read_csv_like(fobj, wanted_cols: List[str]) -> pd.DataFrame:
     """
-    Lê CSV ou ZIP carregando apenas as colunas disponíveis de 'wanted_cols'.
-    Faz um pass só de cabeçalho para descobrir as colunas e então carrega com usecols.
+    Lê CSV a partir de um file-like com tolerância a encoding e linhas ruins.
+    Tenta utf-8; se falhar, cai para latin-1. Sempre usa a interseção de colunas.
+    """
+    # Descobre cabeçalho real
+    fobj.seek(0)
+    header = pd.read_csv(fobj, sep=";", nrows=0, encoding="utf-8", on_bad_lines="skip").columns.tolist()
+    cols = [c for c in wanted_cols if c in header]
+    if not cols:
+        base = ["DT_SIN_PRI", "EVOLUCAO", "UTI", "VACINA_COV", "UF", "SG_UF_NOT", "SG_UF", "SG_UF_RES"]
+        cols = [c for c in base if c in header]
+
+    # Lê os dados
+    fobj.seek(0)
+    try:
+        return pd.read_csv(
+            fobj, sep=";", low_memory=False, usecols=cols, encoding="utf-8",
+            on_bad_lines="skip"
+        )
+    except UnicodeDecodeError:
+        fobj.seek(0)
+        return pd.read_csv(
+            fobj, sep=";", low_memory=False, usecols=cols, encoding="latin-1",
+            on_bad_lines="skip"
+        )
+
+
+def _read_csv_from_zip(path: str, wanted_cols: List[str]) -> pd.DataFrame:
+    """
+    Abre um ZIP local e escolhe o **maior** .csv para ler (dataset principal).
+    """
+    with zipfile.ZipFile(path, "r") as zf:
+        csv_infos = [zi for zi in zf.infolist() if zi.filename.lower().endswith(".csv")]
+        if not csv_infos:
+            raise ValueError(f"ZIP sem CSVs: {path}")
+        target_info = max(csv_infos, key=lambda z: z.file_size)
+        with zf.open(target_info) as f:
+            return _read_csv_like(f, wanted_cols)
+
+
+def _read_csv_selective(path: str, wanted_cols: List[str]) -> pd.DataFrame:
+    """
+    Lê CSV/ZIP local carregando apenas as colunas disponíveis de 'wanted_cols'.
     """
     if path.lower().endswith(".zip"):
-        with zipfile.ZipFile(path, "r") as zf:
-            name = [n for n in zf.namelist() if n.lower().endswith(".csv")][0]
-            with zf.open(name) as f:
-                header = pd.read_csv(f, sep=";", nrows=0).columns.tolist()
-            with zf.open(name) as f:
-                usecols = [c for c in wanted_cols if c in header]
-                return pd.read_csv(f, sep=";", low_memory=False, usecols=usecols)
-    else:
-        header = pd.read_csv(path, sep=";", nrows=0).columns.tolist()
-        usecols = [c for c in wanted_cols if c in header]
-        return pd.read_csv(path, sep=";", low_memory=False, usecols=usecols)
+        return _read_csv_from_zip(path, wanted_cols)
 
-def ingest_local(engine_fn, uf_default: str, cols: list[str], folder: str = "data/raw"):
+    # CSV simples no disco: abre bytes para reaproveitar lógica de encoding
+    with open(path, "rb") as fb:
+        bio = io.BytesIO(fb.read())
+    return _read_csv_like(bio, wanted_cols)
+
+
+# ------------------ Pipeline ------------------ #
+def ingest_local(engine_fn, uf_default: str, cols: List[str], folder: str = "data/raw"):
+    """
+    Ingestão local:
+    - Lê todos os .csv/.zip do diretório informado.
+    - Normaliza/valida UF, datas e flags.
+    - Materializa srag_staging/base/daily/monthly e cria índices.
+    """
     os.makedirs(folder, exist_ok=True)
 
     paths = sorted(glob.glob(os.path.join(folder, "*.csv")) + glob.glob(os.path.join(folder, "*.zip")))
@@ -78,11 +146,17 @@ def ingest_local(engine_fn, uf_default: str, cols: list[str], folder: str = "dat
 
     frames = []
     for path in paths:
+        print(f"📄 Lendo: {os.path.basename(path)}")
         raw = _read_csv_selective(path, cols)
+        print(f"   → Linhas lidas: {len(raw):,}")
         df = _post_clean(raw, uf_default)
         frames.append(df)
 
+    if not frames:
+        raise RuntimeError("Falha na ingestão local: nenhum arquivo foi carregado.")
+
     full = pd.concat(frames, ignore_index=True)
+    print(f"📦 Total consolidado: {len(full):,} linhas")
 
     eng = engine_fn()
     with eng.begin() as conn:
@@ -102,6 +176,7 @@ def ingest_local(engine_fn, uf_default: str, cols: list[str], folder: str = "dat
             FROM srag_staging
             WHERE DT_SIN_PRI IS NOT NULL
         """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_base_date_uf ON srag_base (event_date, uf)"))
 
         # diárias
         conn.execute(text("DROP TABLE IF EXISTS srag_daily"))
@@ -115,6 +190,7 @@ def ingest_local(engine_fn, uf_default: str, cols: list[str], folder: str = "dat
             FROM srag_base
             GROUP BY 1,2
         """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_daily_day_uf ON srag_daily (day, uf)"))
 
         # mensais
         conn.execute(text("DROP TABLE IF EXISTS srag_monthly"))
@@ -128,5 +204,6 @@ def ingest_local(engine_fn, uf_default: str, cols: list[str], folder: str = "dat
             FROM srag_base
             GROUP BY 1,2
         """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_srag_monthly_month_uf ON srag_monthly (month, uf)"))
 
     print(f"✅ Ingestão local concluída ({len(paths)} arquivo(s) em '{folder}').")
