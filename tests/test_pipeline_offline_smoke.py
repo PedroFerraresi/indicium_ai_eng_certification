@@ -12,8 +12,8 @@ def test_pipeline_offline_end_to_end(monkeypatch):
     """
     # 1) Força ambiente OFFLINE antes de importar qualquer módulo do projeto
     monkeypatch.setenv("INGEST_MODE", "local")
-    monkeypatch.setenv("OPENAI_API_KEY", "")   # evita chamadas ao LLM
-    monkeypatch.setenv("SERPER_API_KEY", "")   # evita chamadas ao Serper
+    monkeypatch.setenv("OPENAI_API_KEY", "")  # evita chamadas ao LLM
+    monkeypatch.setenv("SERPER_API_KEY", "")  # evita chamadas ao Serper
     monkeypatch.setenv("NEWS_QUERY", "SRAG Brasil")
 
     # 2) Recarrega módulos que já possam ter sido importados por outros testes
@@ -46,6 +46,6 @@ def test_pipeline_offline_end_to_end(monkeypatch):
 
     # 7) Fallback de notícias (chaves vazias => offline)
     news = out.get("news_summary", "")
-    assert ("Sem notícias recentes" in news) or ("indispon" in news.lower()), (
-        f"Resumo de notícias não parece offline/fallback: {news[:200]}"
-    )
+    assert ("Sem notícias recentes" in news) or (
+        "indispon" in news.lower()
+    ), f"Resumo de notícias não parece offline/fallback: {news[:200]}"

@@ -1,11 +1,10 @@
-# tests/test_report_contract.py
 import pathlib
 import re
 
 from src.reports.renderer import render_html
 
 
-def _ensure_report():
+def _ensure_report() -> pathlib.Path:
     """
     Garante que resources/reports/relatorio.html exista.
     Se não existir, gera um HTML mínimo chamando render_html diretamente.
@@ -14,13 +13,15 @@ def _ensure_report():
     if p.exists():
         return p
 
+    p.parent.mkdir(parents=True, exist_ok=True)
+
     ctx = {
         "uf": "SP",
         "increase_rate": 0.12,
         "mortality_rate": 0.034,
         "icu_rate": 0.18,
         "vaccination_rate": 0.77,
-        # use caminhos RELATIVOS; o orquestrador normalmente coloca ../charts/...
+        # use caminhos RELATIVOS; o orquestrador normalmente usa 'charts/...'
         "chart_30d": "charts/casos_30d.png",
         "chart_12m": "charts/casos_12m.png",
         "news_summary": "Resumo fake para testes.",
@@ -53,7 +54,6 @@ def test_report_contract_exists_and_has_sections():
     assert not missing_ids, f"KPI(s) ausente(s) no HTML: {missing_ids}"
 
     # Aceita sinônimos para compatibilizar o template atual
-    # Se quiser ser estrito, deixe só a 1ª opção de cada lista.
     label_variants = {
         "taxa de aumento": ["taxa de aumento", "variação de casos"],
         "taxa de mortalidade": ["taxa de mortalidade"],
@@ -83,15 +83,17 @@ def test_report_contract_image_paths_are_relative():
     Caminhos dos gráficos devem ser RELATIVOS.
     Aceita:
       - charts/casos_30d.png
+      - ./charts/casos_30d.png
       - ../charts/casos_30d.png
     (idem para 12m)
     E aceita aspas simples OU duplas no atributo src.
     """
-    html = pathlib.Path(r"resources\reports\relatorio.html").read_text(encoding="utf-8")
+    p = _ensure_report()
+    html = p.read_text(encoding="utf-8")
 
-    # Expressões mais tolerantes: aspas simples/duplas e charts/ ou ../charts/
-    pat_30d = r'src=["\'](?:\.\./)?charts/casos_30d\.png["\']'
-    pat_12m = r'src=["\'](?:\.\./)?charts/casos_12m\.png["\']'
+    # Expressões tolerantes: aspas simples/duplas e ./ ou ../ opcionais
+    pat_30d = r'src=["\'](?:\./|\.\./)?charts/casos_30d\.png["\']'
+    pat_12m = r'src=["\'](?:\./|\.\./)?charts/casos_12m\.png["\']'
 
     assert re.search(pat_30d, html), "Gráfico 30d não embutido como caminho relativo."
     assert re.search(pat_12m, html), "Gráfico 12m não embutido como caminho relativo."
