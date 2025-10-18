@@ -16,54 +16,64 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: requirements.txt
-      - name: Install linters
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dev deps
         run: |
           python -m pip install --upgrade pip
-          pip install ruff black isort
+          pip install -r requirements-dev.txt
+
       - name: Ruff
         run: ruff check .
+
       - name: Black
         run: black --check .
+
       - name: isort
         run: isort --check-only .
 
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11"]  # opcional: remova 3.10 se não quiser matriz
+        python-version: ["3.10", "3.11"]
     env:
-      # Evita chamadas externas nos testes de CI
-      RUN_LIVE_API_TESTS: "0"
-      OPENAI_API_KEY: ""
+      RUN_LIVE_API_TESTS: "0"   # evita chamadas externas
+      OPENAI_API_KEY: ""        # chaves vazias por segurança
       SERPER_API_KEY: ""
-      # Evita problemas de display com matplotlib
-      MPLBACKEND: Agg
-      # Execuções determinísticas de datas/horas
-      TZ: UTC
+      MPLBACKEND: Agg           # backend headless para matplotlib
+      TZ: UTC                   # datas/horários determinísticos
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
           cache-dependency-path: requirements.txt
+
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
       - name: Run tests
         run: |
           pytest -q --maxfail=1 --disable-warnings -rA
+
       - name: Upload report artifacts (optional)
         if: always()
         uses: actions/upload-artifact@v4
