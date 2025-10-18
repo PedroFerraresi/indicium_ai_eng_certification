@@ -1,3 +1,4 @@
+# src/utils/audit.py
 from __future__ import annotations
 """
 Utilitários de auditoria/observabilidade.
@@ -22,7 +23,7 @@ import hashlib
 import traceback
 from contextlib import contextmanager
 import datetime
-from typing import Any, Dict, Optional  # <- para Optional[str]
+from typing import Any, Dict, Optional
 
 # === Config via .env ===
 LOG_DIR = os.getenv("LOG_DIR", "resources/json")
@@ -36,10 +37,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 def _now() -> str:
     """Timestamp ISO8601 com milissegundos (UTC)."""
-    # Usa horário consciente de timezone (UTC) e normaliza o sufixo para 'Z'
-    return datetime.datetime.now(datetime.UTC)\
-        .isoformat(timespec="milliseconds")\
-        .replace("+00:00", "Z")
+    return datetime.datetime.now(datetime.UTC).isoformat(timespec="milliseconds") + "Z"
 
 
 def _hash(text: str) -> str:
@@ -47,43 +45,97 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def _truncate(s: Optional[str], max_len: int = 1000) -> Optional[str]:
+def _truncate(s: str | None, max_len: int = 1000) -> str | None:
     """Evita logs gigantes; mantém prévia útil."""
     if s is None:
         return None
     return s if len(s) <= max_len else s[:max_len] + f"... [truncated:{len(s)}]"
 
 
+# ---------- Sanitização (recursiva) ----------
+_SENSITIVE_KEYS = {
+    # comuns
+    "api_key", "apikey", "key", "authorization", "bearer", "token",
+    "access_token", "secret", "password",
+    # nomes específicos do projeto
+    "openai_api_key", "serper_api_key",
+}
+
+def _sanitize_value(v: Any, key_hint: Optional[str] = None) -> Any:
+    """
+    Sanitiza recursivamente valores de dicionários/listas:
+    - Se chave é sensível (em qualquer nível) -> "[REDACTED]"
+    - `prompt` string -> {sha, preview}
+    - `messages` (lista/objeto) -> {sha, count}
+    - Strings muito longas são truncadas para evitar vazamento acidental
+    """
+    # Dicionários
+    if isinstance(v, dict):
+        out: Dict[str, Any] = {}
+        for k, vv in v.items():
+            kl = str(k).lower()
+
+            # Campos sensíveis por nome (em qualquer nível)
+            if (
+                kl in _SENSITIVE_KEYS
+                or kl.endswith("api_key")
+                or kl.endswith("access_token")
+            ):
+                out[k] = "[REDACTED]"
+                continue
+
+            # Prompt: substitui por hash + preview (independente do nível)
+            if kl == "prompt":
+                if isinstance(vv, str):
+                    out[k] = {"sha": _hash(vv), "preview": _truncate(vv, 300)}
+                else:
+                    # prompt não-string -> sanitiza recursivamente
+                    out[k] = _sanitize_value(vv, kl)
+                continue
+
+            # Messages (padrão OpenAI): não logar conteúdo bruto
+            if kl == "messages":
+                try:
+                    txt = json.dumps(vv, ensure_ascii=False)
+                except Exception:
+                    txt = str(vv)
+                count = len(vv) if isinstance(vv, list) else None
+                out[k] = {"sha": _hash(txt), "count": count}
+                continue
+
+            # Caso geral: segue recursivamente
+            out[k] = _sanitize_value(vv, kl)
+        return out
+
+    # Listas / tuplas
+    if isinstance(v, (list, tuple)):
+        return [_sanitize_value(x, key_hint) for x in v]
+
+    # Strings: truncamento defensivo (ex.: stack traces gigantes)
+    if isinstance(v, str):
+        return _truncate(v, 1000)
+
+    # Demais tipos permanecem
+    return v
+
+
 def sanitize_payload(d: Dict[str, Any]) -> Dict[str, Any]:
     """
     Remove/mascara campos sensíveis sem perder rastreabilidade.
-    - Chaves de API são removidas.
-    - Prompts/mensagens têm hash + prévia curta.
+    - Aplica-se recursivamente em qualquer nível.
+    - Chaves típicas (api_key, token, authorization, etc.) viram "[REDACTED]".
+    - 'prompt' vira {sha, preview}, e 'messages' vira {sha, count}.
     """
     if not SANITIZE:
         return d
-    redacted: Dict[str, Any] = {}
-    SENSITIVE_KEYS = {
-        "api_key", "Authorization", "authorization", "token", "password",
-        "OPENAI_API_KEY", "SERPER_API_KEY"
-    }
-    for k, v in d.items():
-        if k in SENSITIVE_KEYS:
-            redacted[k] = "[REDACTED]"
-        elif k == "prompt" and isinstance(v, str):
-            redacted[k] = {"sha": _hash(v), "preview": _truncate(v, 300)}
-        elif k == "messages":
-            try:
-                txt = json.dumps(v, ensure_ascii=False)
-            except Exception:
-                txt = str(v)
-            redacted[k] = {"sha": _hash(txt), "preview": _truncate(txt, 300)}
-        else:
-            redacted[k] = v
-    return redacted
+    try:
+        return _sanitize_value(d)
+    except Exception:
+        # Qualquer erro de sanitização não deve quebrar o log.
+        return d
 
 
-def write_event(event: str, level: str = "INFO", **payload) -> None:
+def write_event(event: str, level: str = "INFO", **payload):
     """
     Grava um evento estruturado (uma linha JSON).
     Use nível DEBUG apenas quando LOG_LEVEL=DEBUG.
@@ -111,9 +163,6 @@ def new_run_id() -> str:
 def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
     """
     Context manager para instrumentar um “span”.
-    Exemplo:
-        with audit_span("metrics", run_id, node="metrics"):
-            ... sua lógica ...
     Registra: <event>.start / <event>.end / <event>.error
     """
     span_id = str(uuid.uuid4())
@@ -122,14 +171,8 @@ def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
     try:
         yield {"run_id": run_id, "span_id": span_id}
         dur = int((time.perf_counter() - t0) * 1000)
-        write_event(
-            f"{event}.end",
-            run_id=run_id,
-            span_id=span_id,
-            node=node,
-            duration_ms=dur,
-            ok=True
-        )
+        write_event(f"{event}.end", run_id=run_id, span_id=span_id, node=node,
+                    duration_ms=dur, ok=True)
     except Exception as e:
         dur = int((time.perf_counter() - t0) * 1000)
         write_event(
@@ -146,6 +189,6 @@ def audit_span(event: str, run_id: str, node: Optional[str] = None, **ctx):
         raise
 
 
-def log_kv(run_id: str, event: str, **kv) -> None:
+def log_kv(run_id: str, event: str, **kv):
     """Atalho para eventos simples (chave-valor)."""
     write_event(event, run_id=run_id, **kv)
