@@ -11,22 +11,6 @@ import traceback
 from typing import Any
 import uuid
 
-"""
-Utilitários de auditoria/observabilidade.
-
-- write_event(): grava um evento JSONL (1 linha por evento).
-- audit_span(): contexto que loga início/fim/erro + duração.
-- log_kv(): atalho para eventos simples (chave-valor).
-- new_run_id(): gera um id único por execução.
-
-Configuração por .env (com defaults seguros):
-- LOG_DIR       (default: resources/json)
-- LOG_FILE      (default: <LOG_DIR>/events.jsonl)
-- LOG_LEVEL     (default: INFO)  [INFO | DEBUG]
-- LOG_SANITIZE  (default: 1)     [1=liga sanitização, 0=desliga]
-"""
-
-
 # === Config via .env ===
 LOG_DIR = os.getenv("LOG_DIR", "resources/json")
 LOG_FILE = os.getenv("LOG_FILE", os.path.join(LOG_DIR, "events.jsonl"))

@@ -1,5 +1,5 @@
 # Base
-line-length = 88
+line-length = 90
 target-version = "py311"
 extend-exclude = ["data/**", "resources/**", ".venv/**", ".git/**", ".pytest_cache/**"]
 

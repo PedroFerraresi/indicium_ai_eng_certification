@@ -3,16 +3,6 @@ from __future__ import annotations
 import argparse
 import os
 
-"""
-Utilitários de CLI para o projeto.
-
-- parse_args(): constrói o ArgumentParser e lê flags da linha de comando,
-  usando valores do ambiente (ex.: carregados do .env) como defaults.
-
-Obs.: NÃO chama load_dotenv aqui; o main.py deve chamar antes para
-popular os defaults corretamente.
-"""
-
 
 def parse_args() -> argparse.Namespace:
     """Retorna os argumentos de execução do pipeline."""

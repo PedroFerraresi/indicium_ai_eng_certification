@@ -10,20 +10,6 @@ from sqlalchemy import text
 
 from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
 
-"""
-Ingestão local para SQLite (CSV/ZIP em data/raw/) — schema SRAG 2024/2025.
-
-Robustez adicionada:
-- Leitura seletiva (usecols) a partir da interseção com o cabeçalho real.
-- Em ZIP: escolhe o MAIOR .csv do pacote (evita pegar dicionários de dados).
-- Tolerância a encoding (utf-8 → fallback para latin-1) e on_bad_lines="skip".
-- UF derivada e validada contra o conjunto de UFs (fallback para uf_default).
-- Datas robustas (detecta ISO YYYY-MM-DD vs DD/MM/YYYY).
-- Cria EVOLUCAO/UTI/VACINA_COV com 0 se ausentes (dtype pandas Int8).
-- Um statement por execute() (compatível com SQLite).
-- Índices (base/daily/monthly) para acelerar consultas posteriores.
-"""
-
 # Ordem de preferência para detectar UF nos CSVs
 UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]
 

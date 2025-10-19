@@ -2,19 +2,6 @@ import importlib
 import json
 import pathlib
 
-"""
-Teste UNITÁRIO do módulo de auditoria (src/utils/audit.py).
-
-Valida:
-- spans *.start / *.end / *.error correlacionados por run_id/span_id;
-- escrita em JSONL no arquivo configurado via ambiente;
-- evento simples via log_kv.
-
-IMPORTANTE: audit.py lê LOG_DIR/LOG_FILE AO IMPORTAR o módulo.
-Por isso, configuramos o ambiente e RECARREGAMOS o módulo (importlib.reload)
-para garantir que ele capte os paths temporários do teste.
-"""
-
 
 def test_audit_span_and_events(tmp_path, monkeypatch):
     # 1) Redireciona log para uma pasta/arquivo temporários

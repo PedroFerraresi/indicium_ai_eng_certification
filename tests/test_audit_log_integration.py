@@ -1,20 +1,3 @@
-"""
-Teste de INTEGRAÇÃO da auditoria com o pipeline real.
-
-Este teste NÃO cria logs por conta própria: ele verifica o arquivo
-'resources/json/events.jsonl' que o pipeline (python main.py) gera.
-
-O que validamos:
-- Existe pelo menos um ciclo de execução com eventos essenciais:
-  run.start, ingest.end, metrics.end, report.end
-- (Opcional) você pode ampliar para verificar 'news.end' e 'charts.end'.
-
-Dica: rode o pipeline antes do teste:
-    python main.py
-e depois rode:
-    pytest -q -m integration
-"""
-
 import json
 import pathlib
 
@@ -47,9 +30,7 @@ def test_audit_log_exists_and_has_spans():
     ok = any(required.issubset(events) for events in seen_by_run.values())
     if not ok:
         # Ajuda na depuração: mostra os últimos eventos por run_id
-        debug = {
-            rid: sorted(list(evts & required)) for rid, evts in seen_by_run.items()
-        }
+        debug = {rid: sorted(list(evts & required)) for rid, evts in seen_by_run.items()}
         pytest.fail(f"Não encontramos um run completo com {required}. Vistos: {debug}")
 
     # Checagem bônus: pelo menos um run_id deve ter 'charts.end' e 'news.end' também

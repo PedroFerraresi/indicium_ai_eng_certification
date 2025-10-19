@@ -2,26 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-import warnings  # <- para filtrar o DeprecationWarning específico
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-
-# Conversão HTML -> PDF sem binários externos (wkhtmltopdf não é necessário)
-# Suprime só o DeprecationWarning do reportlab durante o import:
-try:
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="ast.NameConstant is deprecated",
-            category=DeprecationWarning,
-            module=r"reportlab\..*",  # filtra avisos vindos do reportlab
-        )
-        from xhtml2pdf import pisa
-except Exception:
-    pisa = None  # se indisponível, html_to_pdf retornará None com segurança
+from xhtml2pdf import pisa
 
 # === Diretórios padrão (mantidos fixos para compatibilidade com o projeto) ===
 TEMPLATES_DIR = Path("src/reports/templates")  # onde está report.html.j2

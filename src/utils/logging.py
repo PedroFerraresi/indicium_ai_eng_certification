@@ -5,12 +5,6 @@ import os
 import time
 from typing import Any
 
-"""
-Utilitário simples de logging estruturado:
-- Registra eventos (ex.: ingestão, métricas, renderização) como arquivos JSON.
-- Facilita auditoria e depuração (rastrear o que aconteceu e quando).
-"""
-
 
 def log_event(
     name: str, payload: dict[str, Any], folder: str = "resources/json"

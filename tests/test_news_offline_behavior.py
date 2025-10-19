@@ -1,13 +1,3 @@
-"""
-Valida o COMPORTAMENTO OFFLINE da ferramenta de notícias (src/tools/news.py).
-
-Cenário:
-- Zera as chaves SERPER/OPENAI no ambiente.
-- Recarrega o módulo `news` (ele lê .env no import).
-- Garante que `search_news()` NÃO faça requisições e retorne [].
-- Garante que `summarize_news()` use os fallbacks corretos.
-"""
-
 import importlib
 
 import requests

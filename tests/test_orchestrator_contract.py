@@ -1,22 +1,3 @@
-# tests/test_orchestrator_contract.py
-"""
-Valida o CONTRATO de saída de run_pipeline():
-
-run_pipeline(uf) deve SEMPRE retornar um dicionário com as chaves:
-  {
-    "uf": str,
-    "metrics": dict,
-    "news_summary": str,
-    "chart_30d": Optional[str],
-    "chart_12m": Optional[str],
-    "html_path": Optional[str],
-    "pdf_path": Optional[str],
-  }
-
-O teste é auto-contido: não lê CSV, não chama APIs e não exige arquivos reais.
-Usa monkeypatch para trocar as funções internas por stubs determinísticos.
-"""
-
 import pathlib
 
 import pandas as pd

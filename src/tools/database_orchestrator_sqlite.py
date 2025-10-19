@@ -11,19 +11,6 @@ from sqlalchemy import create_engine, text
 from src.tools.ingestion_local_sqlite import ingest_local
 from src.tools.ingestion_remote_sqlite import ingest_remote
 
-"""
-Orquestrador de ingestão (SQLite) + métricas.
-
-Modo de ingestão controlado por .env:
-- INGEST_MODE=auto   -> usa local se houver arquivos em data/raw/, senão remoto
-- INGEST_MODE=local  -> força ingestão local (ignora URLs)
-- INGEST_MODE=remote -> força ingestão remota (ignora arquivos locais)
-
-SRAG_URLS: lista separada por vírgulas com as URLs CSV/ZIP do OpenDATASUS.
-Ex.: SRAG_URLS=https://.../INFLUD24.csv,https://.../INFLUD25.csv
-"""
-
-
 # -----------------------------------------------------------------------------
 # ENV & Config
 # -----------------------------------------------------------------------------

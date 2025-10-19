@@ -12,17 +12,6 @@ import requests
 
 from src.utils.audit import log_kv
 
-"""
-Ferramenta de notícias (Serper + OpenAI) com:
-- Timeouts, retries com backoff exponencial + jitter
-- Fail-fast e mensagens amigáveis (não propaga exceções)
-- Logs estruturados (audit.log_kv) incluindo latência e uso do LLM
-
-Requisitos:
-- openai>=1.42,<2
-- requests
-"""
-
 # Carrega variáveis do .env
 load_dotenv()
 

@@ -10,23 +10,6 @@ from sqlalchemy import text
 
 from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
 
-"""
-Ingestão remota para SQLite (URLs do OpenDATASUS) — schema SRAG 2024/2025.
-
-Robustez:
-- Uso de usecols (interseção com cabeçalho real).
-- Seleção do MAIOR CSV dentro do ZIP (evita pegar dicionários de dados).
-- Tolerância a encoding (utf-8 → latin-1) e on_bad_lines="skip".
-- UF derivada e validada (fallback para uf_default se inválida).
-- Datas robustas e flags numéricas.
-- Um statement por execute() (SQLite friendly).
-- Índices criados para acelerar métricas.
-
-Env:
-- REMOTE_TIMEOUT (segundos, default=60)
-"""
-
-
 # Candidatas de UF nos CSVs
 UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]
 

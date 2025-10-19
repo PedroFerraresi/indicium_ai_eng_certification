@@ -4,11 +4,6 @@ import datetime
 
 import pandas as pd
 
-"""
-Validações de entrada (UF, datas).
-"""
-
-
 VALID_UFS = {
     "AC",
     "AL",

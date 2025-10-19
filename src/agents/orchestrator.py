@@ -25,30 +25,6 @@ from src.utils.audit import audit_span, log_kv, new_run_id
 # Validações e clamp de datas
 from src.utils.validation import clamp_future_dates, validate_uf
 
-"""
-Orquestrador do pipeline (LangGraph).
-
-Fluxo de nós:
-  ingest  -> metrics -> charts -> news -> report -> END
-
-Observabilidade:
-- Cada nó é envolvido por `audit_span(...)` que loga início/fim/erro,
-  duração (ms) e um `run_id` para rastreabilidade ponta-a-ponta.
-
-Guardrails:
-- Validação de UF (apenas siglas válidas).
-- Remoção de datas futuras nas séries (clamp).
-- `run_id` repassado à ferramenta de notícias (para auditoria de retries/latência).
-
-Contrato de saída:
-- `run_pipeline(uf)` SEMPRE retorna:
-  {
-    "uf", "metrics", "news_summary",
-    "chart_30d", "chart_12m",
-    "html_path", "pdf_path"
-  }
-"""
-
 
 class AgentState(TypedDict, total=False):
     """Estado compartilhado do grafo (chaves adicionadas ao longo do fluxo)."""
