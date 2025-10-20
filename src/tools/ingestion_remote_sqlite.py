@@ -167,9 +167,7 @@ def ingest_remote(engine_fn, uf_default: str, cols: list[str], urls: list[str]):
         frames.append(df)
 
     if not frames:
-        raise RuntimeError(
-            "Falha na ingestão remota: nenhuma tabela carregada das URLs."
-        )
+        raise RuntimeError("Falha na ingestão remota: nenhuma tabela carregada das URLs.")
 
     full = pd.concat(frames, ignore_index=True)
     print(f"📦 Total consolidado: {len(full):,} linhas")

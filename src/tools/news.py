@@ -114,9 +114,7 @@ def search_news(query: str, num: int = 5, run_id: str | None = None) -> list[dic
             except requests.RequestException as e:
                 # Aqui só cai se for um 429/5xx e sem retries restantes
                 last_err = str(e)
-                log_kv(
-                    rid, "serper.http_error_final", status=r.status_code, error=str(e)
-                )
+                log_kv(rid, "serper.http_error_final", status=r.status_code, error=str(e))
                 return []
 
             items = data.get("news", [])[:num]
@@ -125,9 +123,7 @@ def search_news(query: str, num: int = 5, run_id: str | None = None) -> list[dic
         except requests.RequestException as e:
             # timeouts, DNS, conexão etc.
             last_err = str(e)
-            log_kv(
-                rid, "serper.retry.exception", attempt=attempt, error=str(e), query=q
-            )
+            log_kv(rid, "serper.retry.exception", attempt=attempt, error=str(e), query=q)
             if attempt < API_MAX_RETRIES:
                 _sleep_backoff(attempt)
                 continue

@@ -6,9 +6,7 @@ import time
 from typing import Any
 
 
-def log_event(
-    name: str, payload: dict[str, Any], folder: str = "resources/json"
-) -> str:
+def log_event(name: str, payload: dict[str, Any], folder: str = "resources/json") -> str:
     """
     Salva um JSON com timestamp (ms) e nome do evento.
     Retorna o caminho do arquivo salvo.

@@ -98,9 +98,7 @@ def ingest() -> None:
                 "Preencha SRAG_URLS com as URLs CSV/ZIP do OpenDATASUS, separadas por vírgulas."
             )
         print(f"🌐 Ingestão remota com {len(SRAG_URLS)} URL(s).")
-        ingest_remote(
-            engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=SRAG_URLS
-        )
+        ingest_remote(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=SRAG_URLS)
 
 
 # -----------------------------------------------------------------------------
