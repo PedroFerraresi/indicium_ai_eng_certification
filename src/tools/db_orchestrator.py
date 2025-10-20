@@ -8,8 +8,8 @@ from dotenv import find_dotenv, load_dotenv
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-from src.tools.ingestion_remote_sqlite import ingest_remote
 from src.tools.local_ingestion import ingest_local
+from src.tools.remote_ingestion import ingest_remote
 
 # -----------------------------------------------------------------------------
 # ENV & Config
