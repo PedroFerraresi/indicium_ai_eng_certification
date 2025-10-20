@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.reports.renderer import render_html
+from src.reports.render import render_html
 
 
 def test_renderer_blocks_dataframes():

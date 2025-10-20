@@ -8,7 +8,7 @@ import pandas as pd
 import requests
 from sqlalchemy import text
 
-from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
+from src.utils.validate import VALID_UFS  # conjunto de UFs válidas
 
 # Candidatas de UF nos CSVs
 UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]

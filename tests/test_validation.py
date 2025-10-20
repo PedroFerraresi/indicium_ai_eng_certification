@@ -2,7 +2,7 @@ import datetime
 
 import pandas as pd
 
-from src.utils.validation import clamp_future_dates, validate_uf
+from src.utils.validate import clamp_future_dates, validate_uf
 
 
 def test_validate_uf_ok():

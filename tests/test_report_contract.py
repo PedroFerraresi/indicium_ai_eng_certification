@@ -1,7 +1,7 @@
 import pathlib
 import re
 
-from src.reports.renderer import render_html
+from src.reports.render import render_html
 
 
 def _ensure_report() -> pathlib.Path:

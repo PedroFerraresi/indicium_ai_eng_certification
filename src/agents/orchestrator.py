@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 # Relatório e gráficos
-from src.reports.renderer import html_to_pdf, plot_series, render_html
+from src.reports.render import html_to_pdf, plot_series, render_html
 
 # Ingestão + métricas
 from src.tools.db_orchestrator import (
@@ -23,7 +23,7 @@ from src.tools.news import search_news, summarize_news
 from src.utils.audit import audit_span, log_kv, new_run_id
 
 # Validações e clamp de datas
-from src.utils.validation import clamp_future_dates, validate_uf
+from src.utils.validate import clamp_future_dates, validate_uf
 
 
 class AgentState(TypedDict, total=False):

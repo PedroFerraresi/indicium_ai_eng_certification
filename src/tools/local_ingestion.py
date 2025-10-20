@@ -8,7 +8,7 @@ import zipfile
 import pandas as pd
 from sqlalchemy import text
 
-from src.utils.validation import VALID_UFS  # conjunto de UFs válidas
+from src.utils.validate import VALID_UFS  # conjunto de UFs válidas
 
 # Ordem de preferência para detectar UF nos CSVs
 UF_CANDIDATES = ["SG_UF_NOT", "SG_UF", "SG_UF_RES", "UF"]
