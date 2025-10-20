@@ -1,6 +1,6 @@
 import os
 
-from src.tools.database_orchestrator_sqlite import compute_metrics
+from src.tools.db_orchestrator import compute_metrics
 
 
 def test_metrics_for_env_uf():

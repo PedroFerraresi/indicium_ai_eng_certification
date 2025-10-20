@@ -129,7 +129,7 @@ def test_orchestrator_parses_urls_like_env():
     Também valida formato básico das URLs (http/https, .csv ou .zip).
     """
     # importa após load_dotenv
-    from src.tools.database_orchestrator_sqlite import DB_PATH, INGEST_MODE, SRAG_URLS
+    from src.tools.db_orchestrator import DB_PATH, INGEST_MODE, SRAG_URLS
 
     # 1) INGEST_MODE e DB_PATH sincronizados com o .env
     assert INGEST_MODE == os.getenv("INGEST_MODE", "").lower()

@@ -18,8 +18,8 @@ def test_pipeline_offline_end_to_end(monkeypatch):
 
     # 2) Recarrega módulos que já possam ter sido importados por outros testes
     #    (eles capturam env no import)
-    if "src.tools.database_orchestrator_sqlite" in sys.modules:
-        importlib.reload(sys.modules["src.tools.database_orchestrator_sqlite"])
+    if "src.tools.db_orchestrator" in sys.modules:
+        importlib.reload(sys.modules["src.tools.db_orchestrator"])
 
     # Recarregar o orquestrador garante que o grafo seja recompilado com o módulo acima
     if "src.agents.orchestrator" in sys.modules:
@@ -27,7 +27,7 @@ def test_pipeline_offline_end_to_end(monkeypatch):
 
     # 3) Agora importamos com o ambiente correto
     from src.agents.orchestrator import run_pipeline
-    import src.tools.database_orchestrator_sqlite as dbmod
+    import src.tools.db_orchestrator as dbmod
 
     # Sanidade: o módulo de ingestão precisa estar em 'local'
     assert dbmod.INGEST_MODE == "local"
