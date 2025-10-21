@@ -4,22 +4,14 @@ import glob
 import os
 from typing import Any
 
-from dotenv import find_dotenv, load_dotenv
 import pandas as pd
 from sqlalchemy import create_engine, text
 
+# >>> Importa configs centralizadas e as colunas do pacote tools
+from src import DB_PATH, INGEST_MODE, SRAG_URLS, UF_DEFAULT
+from src.tools import COLS
 from src.tools.local_ingestion import ingest_local
 from src.tools.remote_ingestion import ingest_remote
-
-# -----------------------------------------------------------------------------
-# ENV & Config
-# -----------------------------------------------------------------------------
-# Carrega .env a partir da raiz do projeto (sem sobrescrever env já setado)
-load_dotenv(find_dotenv(usecwd=True), override=False)
-
-DB_PATH = os.getenv("DB_PATH", "data/srag.sqlite")
-UF_DEFAULT = os.getenv("UF_INICIAL", "SP")
-INGEST_MODE = os.getenv("INGEST_MODE", "auto").lower()  # auto | local | remote
 
 
 def _parse_urls(env_val: str | None) -> list[str]:
@@ -29,24 +21,9 @@ def _parse_urls(env_val: str | None) -> list[str]:
     return [u.strip() for u in env_val.split(",") if u.strip()]
 
 
-SRAG_URLS: list[str] = _parse_urls(os.getenv("SRAG_URLS", ""))
-
-# Colunas presentes nos CSVs SRAG 2024/2025 (núcleo mínimo que usamos)
-COLS: list[str] = [
-    "DT_SIN_PRI",
-    "EVOLUCAO",
-    "UTI",
-    "VACINA_COV",
-    "CLASSI_FIN",
-    "SEM_PRI",
-    "SG_UF_NOT",
-    "SG_UF",
-    "SG_UF_RES",
-]
-
 # Garante diretório do arquivo do banco (se DB_PATH possuir subpastas)
-db_dir = os.path.dirname(DB_PATH) or "."
-os.makedirs(db_dir, exist_ok=True)
+# db_dir = os.path.dirname(DB_PATH) or "."
+os.makedirs("data", exist_ok=True)
 
 
 # -----------------------------------------------------------------------------
