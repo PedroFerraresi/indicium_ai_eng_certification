@@ -44,38 +44,47 @@ def ingest() -> None:
       - Conteúdo de data/raw (quando INGEST_MODE=auto)
       - Valor de INGEST_MODE (local/remote)
       - SRAG_URLS (para modo remoto)
+
+    OBS: lê INGEST_MODE e SRAG_URLS dinamicamente do ambiente para
+    permitir que testes/execuções mudem o comportamento sem precisar
+    reinicializar o módulo.
     """
     # Detecta presença de arquivos locais
     raw_glob = os.path.join("data", "raw", "*")
     raw_csvs = glob.glob(os.path.join("data", "raw", "*.csv"))
     raw_zips = glob.glob(os.path.join("data", "raw", "*.zip"))
-    has_local = (len(raw_csvs) + len(raw_zips)) > 0
+    any_local = (len(raw_csvs) + len(raw_zips)) > 0
 
-    # Seleciona modo conforme .env
-    if INGEST_MODE == "local":
-        has_local = True
+    # >>> lê o modo de forma dinâmica (env > default empacotado)
+    mode = os.getenv("INGEST_MODE", INGEST_MODE).lower()
+
+    if mode == "local":
         print("⚙️  INGEST_MODE=local → usando ingestão local (data/raw).")
-    elif INGEST_MODE == "remote":
-        has_local = False
+        has_local = True
+    elif mode == "remote":
         print("⚙️  INGEST_MODE=remote → usando ingestão remota (SRAG_URLS).")
+        has_local = False
     else:
-        print(
-            "⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto)."
-        )
+        print("⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto).")
+        has_local = any_local
 
     if has_local:
         print(f"📦 Detectados arquivos locais em {raw_glob} → ingestão local.")
-        ingest_local(
-            engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw"
+        ingest_local(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw")
+        return
+
+    # >>> lê SRAG_URLS dinamicamente também (env > default empacotado)
+    urls_env = os.getenv("SRAG_URLS", "")
+    urls = [u.strip() for u in urls_env.split(",") if u.strip()] or SRAG_URLS
+
+    if not urls:
+        raise RuntimeError(
+            "INGEST_MODE=remote (ou auto sem arquivos locais), mas SRAG_URLS está vazio no .env. "
+            "Preencha SRAG_URLS com as URLs CSV/ZIP do OpenDATASUS, separadas por vírgulas."
         )
-    else:
-        if not SRAG_URLS:
-            raise RuntimeError(
-                "INGEST_MODE=remote (ou auto sem arquivos locais), mas SRAG_URLS está vazio no .env. "
-                "Preencha SRAG_URLS com as URLs CSV/ZIP do OpenDATASUS, separadas por vírgulas."
-            )
-        print(f"🌐 Ingestão remota com {len(SRAG_URLS)} URL(s).")
-        ingest_remote(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=SRAG_URLS)
+
+    print(f"🌐 Ingestão remota com {len(urls)} URL(s).")
+    ingest_remote(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, urls=urls)
 
 
 # -----------------------------------------------------------------------------
