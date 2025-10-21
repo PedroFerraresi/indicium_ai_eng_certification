@@ -65,12 +65,16 @@ def ingest() -> None:
         print("⚙️  INGEST_MODE=remote → usando ingestão remota (SRAG_URLS).")
         has_local = False
     else:
-        print("⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto).")
+        print(
+            "⚙️  INGEST_MODE=auto → escolhendo automaticamente (local se houver arquivos; senão remoto)."
+        )
         has_local = any_local
 
     if has_local:
         print(f"📦 Detectados arquivos locais em {raw_glob} → ingestão local.")
-        ingest_local(engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw")
+        ingest_local(
+            engine_fn=_engine, uf_default=UF_DEFAULT, cols=COLS, folder="data/raw"
+        )
         return
 
     # >>> lê SRAG_URLS dinamicamente também (env > default empacotado)
