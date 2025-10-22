@@ -4,35 +4,7 @@ import datetime
 
 import pandas as pd
 
-VALID_UFS = {
-    "AC",
-    "AL",
-    "AP",
-    "AM",
-    "BA",
-    "CE",
-    "DF",
-    "ES",
-    "GO",
-    "MA",
-    "MT",
-    "MS",
-    "MG",
-    "PA",
-    "PB",
-    "PR",
-    "PE",
-    "PI",
-    "RJ",
-    "RN",
-    "RS",
-    "RO",
-    "RR",
-    "SC",
-    "SP",
-    "SE",
-    "TO",
-}
+from src.utils import VALID_UFS
 
 
 def validate_uf(uf: str) -> str:
