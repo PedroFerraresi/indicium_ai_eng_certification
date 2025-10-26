@@ -82,3 +82,62 @@ Durante a ingestão, são criadas 4 tabelas com responsabilidades claras:
 - **12 meses (mensal)**: útil para contextualizar a **sazonalidade** e mudanças estruturais.
 
 Ambas são salvas como **PNG** em `resources/charts/` e embutidas nos relatórios (`.html` e `.pdf`).
+
+
+## Arquitetura
+
+A aplicação segue um **pipeline orquestrado** em 5 etapas — `ingest → metrics → charts → news → report` — isolando responsabilidades, permitindo execução **offline** e garantindo observabilidade ponta-a-ponta.
+
+### Diagrama (Mermaid)
+
+> O diagrama fonte está em `resources/diagrams/app_flow.mmd`.
+
+<p align="center">
+  <img src="resources/diagrams/app_flow.svg" alt="Fluxo da aplicação" style="max-width:80%; height:auto;">
+</p>
+
+
+### Componentes
+
+- **Orchestrator (Agent/Graph)**: Encadeia os nós do pipeline, injeta run_id, aplica guardrails (validação de UF, corte de datas futuras) e consolida o contrato de saída.
+- **Ingestão (Local/Remote) → SQLite**: Carrega os arquivos `.csv` (local em `data/raw/` ou remoto via `SRAG_URLS`), normaliza datas/UF, cria tabelas `srag_staging`, `srag_base`, `srag_daily` e `srag_monthly`.
+- **Metrics**: Lê o SQLite e calcula KPIs determinísticos: `increase_rate`, `mortality_rate`, `icu_rate`, `vaccination_rate`. Também expõe séries: 30 dias (diária) e 12 meses (mensal).
+- **Charts**: Converte as séries em PNGs em `resources/charts/` (nomes padronizados); os caminhos são referenciados **relativamente** no HTML.
+- **News (opcional)**: Busca manchetes (**Serper**) e gera resumo curto (**OpenAI**). Inclui timeouts/retries/backoff e fallback seguro (pipeline segue sem LLM/keys).
+- **Report (Renderer)**: Renderiza `report.html.j2` para o arquivo `relatorio.html` (e tenta a **conversão** para PDF via xhtml2pdf). Privacy guard: bloqueia DataFrames/Series no contexto do template.
+- **Observability (Audit)**: `audit_span()` e `write_event()` registram *.start/*.end/*.error, duração e contexto em `resources/json/events.jsonl`.
+
+
+### Contrato de execução
+
+```python
+from src.agents.orchestrator import run_pipeline
+
+out = run_pipeline("SP")
+# Retorno canônico:
+# {
+#   "uf": "SP",
+#   "metrics": {...},           # KPIs + séries
+#   "news_summary": "…",        # texto (ou fallback seguro)
+#   "chart_30d": "charts/…png", # relative path (ou None)
+#   "chart_12m": "charts/…png", # relative path (ou None)
+#   "html_path": "resources/reports/relatorio.html",
+#   "pdf_path": "resources/reports/relatorio.pdf" | None
+# }
+
+```
+
+### Modos de ingestão
+
+- **Local**: usa arquivos em `data/raw/*.csv`.
+- **Remoto**: usa SRAG_URLS no `.env` (1+ URLs).
+- **Auto**: prioriza local se houver arquivos; caso contrário, remoto.
+
+> CI/Offline: testes rodam com live desativado; news entra em modo “no-LLM/no-Serper” sem quebrar o pipeline.
+
+### Guardrails & Qualidade
+
+- Validação de UF; clamp de datas futuras; normalização POSIX para caminhos das imagens;
+- Timeouts/retries/backoff em chamadas externas; sanitização de payloads nos logs;
+- KPIs arredondados antes do template; data-testid nos KPIs do HTML;
+- Suíte de testes cobrindo ingestão, métricas, contrato do relatório e auditoria; CI no GitHub Actions.
