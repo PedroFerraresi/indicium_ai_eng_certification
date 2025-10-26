@@ -1,0 +1,31 @@
+flowchart TB
+  App --> ING
+
+  subgraph Orchestrator
+    ING[Ingest Data]
+    DB[(SQLite)]
+    MET[SRAG Metrics]
+    CH[Plot Charts]
+    NEWS[News Summary]
+    REP[AI Summary & Report]
+  end
+
+  ING --> DB
+  DB --> MET
+
+  %% Artefatos em memória/arquivo
+  MET --> CH
+  CH -->|charts/*.png| REP
+  MET -->|KPIs| REP
+  NEWS -->|items + resumo| REP
+
+  subgraph Outputs
+    PNG[charts/*.png]
+    HTML[relatorio.html]
+    PDF[relatorio.pdf]
+    LOGS[events.jsonl]
+  end
+
+  CH --> PNG
+  REP --> HTML --> PDF
+  Orchestrator -. audit spans .-> LOGS
