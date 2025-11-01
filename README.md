@@ -307,3 +307,138 @@ Os testes a seguir validam partes essenciais do contrato:
 - `tests/test_report_contract.py` → HTML existe, contém data-testids dos KPIs, seções mínimas e caminhos relativos das imagens.
 - `tests/test_renderer_privacy.py` → `render_html()` bloqueia DataFrames/Series no contexto (privacidade).
 - `tests/test_orchestrator_contract.py` → `run_pipeline()` retorna o dicionário canônico (chaves obrigatórias).
+
+## Testes
+
+O projeto utiliza a biblioteca **pytest** (com `pytest-xdist` e `pytest-cov`) e foi pensada para rodar **offline por padrão** (sem bater em APIs externas). Os testes carregam o `.env` automaticamente, mas também funcionam no CI com variáveis mínimas.
+
+### O que é coberto
+
+| Arquivo de teste | O que valida |
+| --- | --- |
+| `tests/test_env.py` | Presença/formato de variáveis de ambiente, parsing de `SRAG_URLS`, modos de ingestão. |
+| `tests/test_ingestion_artifacts.py` | Tabelas esperadas no SQLite (`srag_*`) e existência de linhas. |
+| `tests/test_metrics_basic.py` | KPIs e séries retornadas por `compute_metrics()` para a UF do `.env`. |
+| `tests/test_news_offline_behavior.py` | **Sem chamadas externas** quando em modo offline (`RUN_LIVE_API_TESTS=0`). |
+| `tests/test_audit_log_basic.py` | Spans `*.start/*.end/*.error`, `run_id/span_id`, e escrita em JSONL. |
+| `tests/test_audit_log_integration.py` | Arquivo `resources/json/events.jsonl` existe e contém spans coerentes. |
+| `tests/test_renderer_privacy.py` | **Privacy guard**: `render_html()` rejeita DataFrame/Series no contexto. |
+| `tests/test_report_contract.py` | Contrato do HTML (KPIs com `data-testid`), gráficos com **caminhos relativos**. |
+| `tests/test_orchestrator_contract.py` | `run_pipeline()` retorna **dicionário canônico** de saída. |
+| `tests/test_pipeline_offline_smoke.py` | pipeline completa e gera `relatorio.html`. |
+
+> Os testes “live” (que chamariam Serper/OpenAI) ficam **desligados** por padrão e **marcados como skipped** no CI.
+
+### Como rodar localmente
+
+- Garanta que as bibliotecas dos arquivos de requisitos (`requirements.txt` e `requirements-dev.txt`) estejam instaladas
+- Utilize o comando `pytest -q` para rodar os testes, ou `pytest -q -n auto`
+- Caso deseje rodar um teste único, execute o comando `pytest tests/<teste> -q`. Por exemplo: `pytest tests/test_report_contract.py -q`
+
+> Por padrão, os testes rodam sem bater em APIs externas.
+
+### Troubleshooting
+
+- **Falha “SRAG_URLS vazio”:** garanta `INGEST_MODE=local` ao rodar testes offline ou preencha `SRAG_URLS` no `.env` para remoto.
+- **Falha de caminho de gráfico:** os testes exigem caminhos relativos `POSIX` no HTML (`charts/casos_30d.png`). O renderer já normaliza, mas verifique que você não alterou o template/output manualmente.
+- **Fuso/datas:** para total determinismo, use `TZ=UTC` ao rodar os testes.
+
+## CI (GitHub Actions)
+
+O projeto inclui um pipeline de **Integração Contínua** em `.github/workflows/ci.yml`.
+
+Ele valida a **qualidade** (lint) e **confiabilidade** (testes) a cada **push** e **pull request** na branch `main`.
+
+### O que o CI faz
+
+- **Dispara em**: `push` e `pull_request` para `main`.
+- **Concorrência**: cancela execuções anteriores do mesmo branch/PR para economizar tempo.
+- **Jobs**:
+  - **lint**: roda `ruff check .` (lint e regras de formatação).
+  - **tests**: executa a biblioteca `pytest` em **matriz de versões do Python** (3.12 e 3.13).
+- **Cache**: pip cache habilitado para acelerar instalações.
+- **Ambiente offline por padrão**:
+  - `RUN_LIVE_API_TESTS=0` → testes **não** chamam Serper/OpenAI.
+  - `OPENAI_API_KEY` e `SERPER_API_KEY` são vazias no CI.
+  - `MPLBACKEND=Agg` (renderização sem display) e `TZ=UTC` (estabilidade de datas).
+- **Artifacts**: publica (quando existem) os arquivos em `resources/reports/**` e `resources/json/**` para inspeção pós-build.
+
+## Observabilidade
+
+A execução do projeto é monitorada de ponta-a-ponta por **eventos estruturados salvos no formato JSONL**, escritos no arquivo
+`resources/json/events.jsonl`. Cada etapa do pipeline emite **spans** (`*.start`, `*.end`, `*.error`) e
+eventos de **telemetria** (`log_kv`) com chaves/valores relevantes. Isso permite depurar problemas,
+medir latências e auditar o comportamento (inclusive de integrações externas) sem depender de prints.
+
+### Onde os logs ficam
+
+- **Arquivo padrão**: `resources/json/events.jsonl`  
+- **Configuração por `.env`**:
+  - `LOG_DIR`  (padrão: `resources/json`)
+  - `LOG_FILE` (padrão: `events.jsonl`)
+  - `LOG_SANITIZE=1` → liga sanitização defensiva de payloads (recomendado)
+
+### O que é registrado
+
+- **Spans** por nó do pipeline:
+  - `ingest.start` / `ingest.end` / `ingest.error`
+  - `metrics.*`, `charts.*`, `news.*`, `report.*`, `run.*` (orquestração)
+- **Execução**:
+  - `run_id`: identifica **uma execução completa** do pipeline
+  - `span_id`: identifica o span atual (útil para agrupar `.start`/`.end`/`.error`)
+- **Medições**:
+  - `duration_ms` em `.end` e `.error`
+- **Contexto**:
+  - chaves específicas por evento (ex.: `node`, `ingest_mode`, `query`, etc.)
+- **Telemetria customizada**:
+  - `log_kv(...)` emite eventos com `event` definido (ex.: `llm.openai.usage`, `serper.retry`)
+
+## Guardrails
+
+O projeto implementa **defesas em camadas** (`input` → `dados` → `transformação` → `saída` → `operação`) para prevenir erros silenciosos, vazamentos e comportamentos inesperados.
+
+### Visão geral
+
+| Risco                                         | Guardrail / Política                                   | Onde fica                                      | Teste(s) que cobrem |
+|----------------------------------------------|--------------------------------------------------------|------------------------------------------------|---------------------|
+| UF inválida ou fora do padrão                | Normalização/validação de UF (`SP`, `RJ`, …)           | `src/utils/validate.py::validate_uf`           | `tests/test_validation.py` |
+| Datas futuras “sujando” séries                | Corte de datas futuras (clamp)                         | `src/utils/validate.py::clamp_future_dates`    | `tests/test_validation.py` |
+| Vazamento de dados de linha no relatório      | **Privacy guard**: bloqueia `DataFrame/Series` no Jinja| `src/reports/renderer.py::render_html`         | `tests/test_renderer_privacy.py` |
+| HTML quebrado por caminhos Windows            | Normalização **POSIX** nos `src` de imagens            | `src/reports/renderer.py::render_html`         | `tests/test_report_contract.py` |
+| Quebra do pipeline sem chaves/LLM             | **Fallback**: notícias opcionais, resumo seguro        | `src/tools/news.py`, `src/agents/orchestrator.py` | `tests/test_news_offline_behavior.py`, `tests/test_pipeline_offline_smoke.py` |
+| PDFs causando falha                           | PDF opcional (xhtml2pdf); erro **não** interrompe run  | `src/reports/renderer.py::html_to_pdf`         | Coberto indiretamente nas suítes |
+| Template com KPIs/partes ausentes             | **Contrato** do relatório (data-testid, seções, imagens)| `src/reports/templates/report.html.j2` + testes | `tests/test_report_contract.py` |
+| Regressões/erros silenciosos entre nós        | **Spans** `.start/.end/.error` + `duration_ms`         | `src/utils/audit.py`                            | `tests/test_audit_log_basic.py`, `tests/test_audit_log_integration.py` |
+| Instabilidade de APIs externas                | `timeout` + `retries` + **exponential backoff**         | `src/tools/news.py`                             | Exercitado em offline/fallback |
+| Modo de ingestão inesperado em CI             | `INGEST_MODE=local` no smoke test; auto-detect no run  | `src/tools/db_orchestrator.py`                  | `tests/test_pipeline_offline_smoke.py` |
+
+### Detalhes por camada
+
+#### 1. Entrada (Input Validation)
+
+- `validate_uf(uf)`: normaliza para `AA` e rejeita valores fora de `VALID_UFS`.
+- `clamp_future_dates(df, col)`: converte para datetime, **remove timezone** e descarta registros `> hoje` (UTC).
+
+#### 2. Dados (Data Hygiene)
+
+- Ingestão local/remota monta `srag_base/daily/monthly` com **tipagem numérica** defensiva (`to_numeric(...).fillna(0).astype(int)`).
+- Derivação de `UF` com prioridade (`SG_UF_NOT` → `SG_UF` → `SG_UF_RES` → fallback).
+
+#### 3. Transformação (Determinismo)
+
+- KPIs determinísticos (SQL/Pandas) e **arredondados antes** do template.
+- Séries ordenadas/parseadas e gráficos gerados somente se houver dados.
+
+#### 4. Saída (Output Contract & Privacy)
+
+- `render_html(context)` rejeita `DataFrame/Series` → evita vazamento de dados de linha.
+- Caminhos dos gráficos **sempre relativos** e normalizados para `/` (funciona em Windows).
+- `html_to_pdf(...)` retorna `None` em erro/ausência de lib — o pipeline **não** falha.
+- Template com `data-testid` nos KPIs e seções obrigatórias (testadas).
+
+#### 5. Operação (Resiliência & Observabilidade)
+
+- `news.search_news` e `news.summarize_news` com `API_TIMEOUT`, `API_MAX_RETRIES` e `API_BACKOFF_BASE` (jitter).
+- Fallback seguro quando `OPENAI_API_KEY`/`SERPER_API_KEY` não existem (especialmente no **CI**).
+- Telemetria estruturada: spans com `run_id`, `span_id`, `duration_ms`, eventos de retry (`serper.retry`, `openai.retry`), uso do LLM (`llm.openai.usage`), etc.
+- Sanitização (`LOG_SANITIZE=1`): logs evitam armazenar payloads sensíveis completos (prompts entram como `{len, preview}`).
