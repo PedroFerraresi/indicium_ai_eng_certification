@@ -237,13 +237,13 @@ indicium_ai_eng_certification/
 ## Configuração (.env & modos de execução)
 
 O projeto usa variáveis de ambiente (via `python-dotenv`) para configurar ingestão, banco, logs e as integrações de **notícias** (Serper + OpenAI).  
-Crie uma cópia do arquivo **`.env.example`** como base e preencha com as informações específicas do seu ambiente. Além disso, o projeto foi construído utilizando para ser executado nas versões `>= 3.13` do Python.
+Crie uma cópia do arquivo **`.env.example`** como base e preencha com as informações específicas do seu ambiente. Além disso, o projeto foi construído utilizando para ser executado nas versões `>= 3.12` do Python.
 
 | Variável               | Default                       | Descrição                                                                                            |
 | ---------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `DB_PATH`              | `data/srag.sqlite`            | Caminho do banco SQLite usado para as tabelas `staging/base/daily/monthly`.                          |
 | `UF_INICIAL`           | `SP`                          | UF padrão para gerar o relatório quando não informada via CLI/código.                                |
-| `INGEST_MODE`          | `auto`                        | - **`local`** → Lê os arquivos CSV em `data/raw` <br /> - **`remote`** → Faz o download dos arquivos nas URLs no `SRAG_URLS` <br /> - **`auto`** → Escolhe automaticamente. Verifica se eixtem arquivos CSV e faz ingestão **local**, senão, faz **remota**.                     |
+| `INGEST_MODE`          | `auto`                        | - **`local`** → Lê os arquivos CSV em `data/raw` <br /> - **`remote`** → Faz o download dos arquivos nas URLs no `SRAG_URLS` <br /> - **`auto`** → Escolhe automaticamente. Verifica se existem arquivos CSV e faz ingestão **local**, senão, faz **remota**.                     |
 | `SRAG_URLS`            | *(vazio)*                     | Lista (separada por vírgulas) de URLs CSV do OpenDataSUS para ingestão **remota**.                   |
 | `NEWS_QUERY`           | `SRAG Brasil`                 | Consulta usada no coletor de notícias.                                                               |
 | `OPENAI_SUMMARY_MODEL` | `gpt-4o-mini`                 | Modelo para o resumo das notícias.                                                                   |
@@ -270,9 +270,9 @@ Crie uma cópia do arquivo **`.env.example`** como base e preencha com as inform
 
 - Clonar repositório (`git clone https://github.com/PedroFerraresi/indicium_ai_eng_certification`)
 - Criar ambiente virtual e instalar dependências
-- Instalar requisitos de aplicaçãp (`requirements.txt`) e desenvolvimento (`requirements-dev.txt`)
+- Instalar requisitos de aplicação (`requirements.txt`) e desenvolvimento (`requirements-dev.txt`)
 - Criar uma cópia do arquivo `.env.example` e preencher com as configurações do ambiente
-- (Opcional) Colocar aquivos de dados CSV dentro do diretório `data\raw`
+- (Opcional) Colocar arquivos de dados CSV dentro do diretório `data\raw`
 - Executar a pipeline com o comando `python main.py` para a execução padrão, ou selecionando um outro estado com o comando `python main.py --uf RJ`
 
 ### Onde olhar resultados e logs
@@ -302,7 +302,7 @@ Crie uma cópia do arquivo **`.env.example`** como base e preencha com as inform
 
 ### Testes que garantem o contrato
 
-Os testes a seguir validam partes essenciais do contrato: 
+Os testes a seguir validam partes essenciais do contrato:
 
 - `tests/test_report_contract.py` → HTML existe, contém data-testids dos KPIs, seções mínimas e caminhos relativos das imagens.
 - `tests/test_renderer_privacy.py` → `render_html()` bloqueia DataFrames/Series no contexto (privacidade).
