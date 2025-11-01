@@ -287,3 +287,23 @@ Crie uma cópia do arquivo **`.env.example`** como base e preencha com as inform
 - *PDF não gerado (None)* → Verifique se o pacote `xhtml2pdf` está instalado corretamente e veja detalhes em `resources/json/events.jsonl`.
 - *Sem dados/séries vazias* → Confirme se seus CSVs têm as colunas mínimas (`DT_SIN_PRI`, `EVOLUCAO`, `UTI`, `VACINA_COV`, `SG_UF_*`) e UF correspondente.
 
+## Relatórios
+
+### Artefatos gerados
+
+- **HTML**: `resources/reports/relatorio.html`. Relatório executivo por UF, com KPIs, gráficos (30d/12m) e (opcional) resumo de notícias.
+- **PDF (opcional)**: `resources/reports/relatorio.pdf`. Conversão do HTML via **xhtml2pdf**. Se a conversão falhar/estiver indisponível, o projeto **não quebra**;
+- **Gráficos**: `resources/charts/casos_30d.png` e `resources/charts/casos_12m.png`. Caminhos **relativos** são embutidos no HTML.
+  
+### Regras de portabilidade e privacidade
+
+- **Portabilidade (paths):** o renderer normaliza os caminhos para **POSIX `(/)`** antes de salvar o HTML, evitando barras invertidas (`\`) no Windows.
+- **Privacidade (guardrail):** a função `render_html(ctx)` rejeita objetos do tipo `pd.DataFrame/pd.Series` e lança uma exceção do tipo `ValueError`, prevenindo vazamento de dados para o relatório (somente agregados e imagens são permitidos).
+
+### Testes que garantem o contrato
+
+Os testes a seguir validam partes essenciais do contrato: 
+
+- `tests/test_report_contract.py` → HTML existe, contém data-testids dos KPIs, seções mínimas e caminhos relativos das imagens.
+- `tests/test_renderer_privacy.py` → `render_html()` bloqueia DataFrames/Series no contexto (privacidade).
+- `tests/test_orchestrator_contract.py` → `run_pipeline()` retorna o dicionário canônico (chaves obrigatórias).
