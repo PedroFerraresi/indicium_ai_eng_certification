@@ -90,7 +90,7 @@ Ambas são salvas como **PNG** em `resources/charts/` e embutidas nos relatório
 
 A aplicação segue um **pipeline orquestrado** em 5 etapas — `ingest → metrics → charts → news → report` — isolando responsabilidades, permitindo execução **offline** e garantindo observabilidade ponta-a-ponta.
 
-### Diagrama (Mermaid)
+### Diagrama de Fluxo
 
 > O diagrama fonte está em `resources/diagrams/app_flow.mmd`.
 
@@ -101,7 +101,7 @@ A aplicação segue um **pipeline orquestrado** em 5 etapas — `ingest → metr
 ### Componentes
 
 - **Orchestrator (Agent/Graph)**: Encadeia os nós do pipeline, injeta run_id, aplica guardrails (validação de UF, corte de datas futuras) e consolida o contrato de saída.
-- **Ingestão (Local/Remote) → SQLite**: Carrega os arquivos `.csv` (local em `data/raw/` ou remoto via `SRAG_URLS`), normaliza datas/UF, cria tabelas `srag_staging`, `srag_base`, `srag_daily` e `srag_monthly`.
+- **Ingestão (Local/Remote) → SQLite**: Carrega os arquivos `.csv` (local em `data/raw/` ou remoto via `SRAG_URLS`), normaliza datas/UF e cria tabelas `srag_staging`, `srag_base`, `srag_daily` e `srag_monthly`.
 - **Metrics**: Lê o SQLite e calcula KPIs determinísticos: `increase_rate`, `mortality_rate`, `icu_rate`, `vaccination_rate`. Também expõe séries: 30 dias (diária) e 12 meses (mensal).
 - **Charts**: Converte as séries em PNGs em `resources/charts/` (nomes padronizados); os caminhos são referenciados **relativamente** no HTML.
 - **News (opcional)**: Busca manchetes (**Serper**) e gera resumo curto (**OpenAI**). Inclui timeouts/retries/backoff e fallback seguro (pipeline segue sem LLM/keys).
@@ -173,3 +173,63 @@ Para **qualidade e observabilidade**, o projeto usa **pytest** (incluindo testes
 | python-dotenv        | Leitura de configuração por `.env`                               |
 
 Em resumo: a stack foca em **simplicidade operacional**, **execução offline confiável** e **contratos testáveis**.
+
+## Estrutura do Projeto
+
+A organização do repositório foi desenvolvida visando privilegiar a **clareza por responsabilidade**, **portabilidade** e **testabilidade**.
+
+```text
+indicium_ai_eng_certification/
+├─ .github/workflows/ci.yml # CI (pytest + ruff, matriz de Python)
+│
+├─ data/
+│ ├─ raw/ # (opcional) CSVs locais do OpenDataSUS
+│ └─ srag.sqlite # Banco SQLite gerado na ingestão
+│
+├─ notebooks/ # Notebooks auxiliares/exploratórios
+│
+├─ resources/
+│ ├─ charts/ # PNGs das séries (30d, 12m)
+│ ├─ json/events.jsonl # Logs (auditoria)
+│ └─ reports/relatorio.(html|pdf) # Relatórios finais
+│
+├─ src/
+│ ├─ __init__.py # Centro de configuração (via .env)
+│ ├─ agents/
+│ │ └─ orchestrator.py # Grafo: ingest → metrics → charts → news → report
+│ │
+│ ├─ reports/
+│ │ ├─ __init__.py # Constantes de caminho (templates/reports/charts)
+│ │ ├─ renderer.py # Renderizador de imagens, HTML, HTML→PDF (xhtml2pdf)
+│ │ └─ templates/report.html.j2 # Template do relatório
+│ │
+│ ├─ tools/
+│ │ ├─ __init__.py # Contrato de colunas (COLS) e utilitários do módulo
+│ │ ├─ db_orchestrator.py # Decide ingestão (local/remota) e expõe métricas
+│ │ ├─ local_ingestion.py # Ingestão local (data/raw → SQLite)
+│ │ ├─ remote_ingestion.py # Ingestão remota (SRAG_URLS → SQLite)
+│ │ └─ news.py # Busca e resume as notícias
+│ │
+│ └─ utils/
+│   ├─ audit.py # Escreve logs
+│   ├─ cli.py # Captura das entradas de linha de comando
+│   ├─ logging.py # Configuração de logging
+│   └─ validate.py # Valida UF e datas
+│
+├─ tests/ # Diretório contendo os testes do projeto
+│
+├─ main.py # Entry point (carrega .env, chama run_pipeline)
+├─ .env.example # Exemplo de arquivo de configuração
+├─ requirements.txt # Dependências runtime
+├─ requirements-dev.txt # Dev (pytest, ruff, etc.)
+├─ ruff.toml # Lint/format (Ruff)
+└─ README.md
+```
+
+### Convenções importantes
+
+- **Caminhos POSIX no HTML/PDF**: o renderizador normaliza os caminhos (`\\` → `/`) para que imagens carreguem independente do sistema operacional.
+- **Contrato do relatório**: *KPIs* possuem `data-testid` e imagens são referenciadas por **caminhos relativos** (ex.: `charts/casos_30d.png`).  
+- **Execução offline**: Sem `OPENAI_API_KEY`/`SERPER_API_KEY`, a etapa de notícias entra em **fallback** e não é executada, de forma a **não** quebrar o pipeline.  
+- **Orquestração extensível**: novos nós podem ser adicionados em `orchestrator.py` mantendo o fluxo e a auditoria (envolver novos nós em `audit_span()`).
+- Ao criar novas integrações/métricas, é preferível **exportar configurações** via `src/__init__.py` (e `src/tools/__init__.py` quando for algo específico de *tools*) em vez de declarar *variáveis globais*. Isso reduz *drift* de configuração e facilita testes.S
