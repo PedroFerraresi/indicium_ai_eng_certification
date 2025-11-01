@@ -442,3 +442,70 @@ O projeto implementa **defesas em camadas** (`input` → `dados` → `transforma
 - Fallback seguro quando `OPENAI_API_KEY`/`SERPER_API_KEY` não existem (especialmente no **CI**).
 - Telemetria estruturada: spans com `run_id`, `span_id`, `duration_ms`, eventos de retry (`serper.retry`, `openai.retry`), uso do LLM (`llm.openai.usage`), etc.
 - Sanitização (`LOG_SANITIZE=1`): logs evitam armazenar payloads sensíveis completos (prompts entram como `{len, preview}`).
+
+## Privacidade
+
+**Escopo**  
+
+- Relatórios exibem **apenas agregados e gráficos** (**nenhuma linha bruta**.)
+
+**Guardrails principais**  
+
+- **Privacy guard no template**: `render_html()` rejeita `DataFrame/Series`.  
+- **Sanitização de logs** (`LOG_SANITIZE=1`): grava apenas metadados (ex.: `{len, preview}`) de prompts/respostas.  
+- **Caminhos locais** e **POSIX** para imagens; HTML/PDF sem dados de linha.
+
+**APIs externas (opcional)**  
+
+- **Serper/OpenAI** só recebem **manchetes públicas** e **consulta** (`NEWS_QUERY`).  
+
+**Controles rápidos**  
+
+- `LOG_SANITIZE=1` (recomendado).  
+- `RUN_LIVE_API_TESTS=0` no CI.  
+- Ausência de `OPENAI_API_KEY`/`SERPER_API_KEY` desativa notícias.  
+- `API_TIMEOUT`, `API_MAX_RETRIES`, `API_BACKOFF_BASE` limitam exposição externa.
+
+## Limitações & Próximos passos
+
+### Limitações atuais
+
+- **Janelas fixas** (30d/12m) embutidas no código; sem parametrização por linha de comando.
+- KPIs **determinísticos e simples**.
+- **Seaborn/PNG** estático; sem dashboard interativo.
+- **xhtml2pdf** tem suporte CSS limitado; PDFs podem variar entre ambientes.
+- Template único (`report.html.j2`) — sem temas/múltiplos layouts.
+- Resumo de notícias depende de **Serper/OpenAI**
+- Sem **ingestão incremental** e sem **agendamento** nativo (cron/Airflow).
+- **Config por .env** apenas; sem “profiles” (dev/ci/prod) ou secrets manager.
+- Logs **crescem indefinidamente** (JSONL sem rotação).
+- Tipagem estática parcial; sem **mypy**/**pydantic** nos contratos.
+- Cobertura de testes adequada ao desafio, mas sem **coverage gate**.
+
+### Próximos passos
+
+#### Curto prazo
+
+- Parametrizar janelas (ex.: `--days 60`, `--months 24`) e UF via CLI.
+- **Ingestão incremental** dos dados com dedup e partições por mês.
+- Cache local das notícias.
+- Rotação de logs (definição de log diário/semanal/quinzenal/mensal).
+- Testes: Ajustar cobertura de Testes.
+- Ajustar e melhorar template do relatório
+- Incluir mais UFs na análise e ajustar relatórios por UF e geral.
+
+#### Médio prazo
+
+- Adotar **DuckDB**/Parquet como alternativa ao SQLite para ganho de I/O e análise.
+- Enriquecer KPIs: média móvel, tendência (Theil–Sen), sazonalidade simples, “alertas” por limiares.
+- Melhorar PDF e **temas** de relatório.
+- **CLI consolidada** com comandos `ingest`, `metrics`, `report`, `clean` para execução de ações no projeto.
+- Tipagem e contratos: **pydantic** para contextos/saídas; **mypy** no CI.
+
+### Longo prazo / nice-to-have
+
+- **Docker**  com **Makefile** e `tasks.py`.
+- Orquestração programável (Airflow/Prefect) e agendamento diário.
+- Exportações dos *KPIs* em arquivos CSV/Parquet.
+- Endpoint REST simples (FastAPI) ou dashboard (Streamlit) para consumo dos *KPIs*.
+- Multi-UF em lote com execução paralela e paginação de resultados.
