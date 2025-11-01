@@ -233,3 +233,57 @@ indicium_ai_eng_certification/
 - **Execução offline**: Sem `OPENAI_API_KEY`/`SERPER_API_KEY`, a etapa de notícias entra em **fallback** e não é executada, de forma a **não** quebrar o pipeline.  
 - **Orquestração extensível**: novos nós podem ser adicionados em `orchestrator.py` mantendo o fluxo e a auditoria (envolver novos nós em `audit_span()`).
 - Ao criar novas integrações/métricas, é preferível **exportar configurações** via `src/__init__.py` (e `src/tools/__init__.py` quando for algo específico de *tools*) em vez de declarar *variáveis globais*. Isso reduz *drift* de configuração e facilita testes.S
+
+## Configuração (.env & modos de execução)
+
+O projeto usa variáveis de ambiente (via `python-dotenv`) para configurar ingestão, banco, logs e as integrações de **notícias** (Serper + OpenAI).  
+Crie uma cópia do arquivo **`.env.example`** como base e preencha com as informações específicas do seu ambiente. Além disso, o projeto foi construído utilizando para ser executado nas versões `>= 3.13` do Python.
+
+| Variável               | Default                       | Descrição                                                                                            |
+| ---------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `DB_PATH`              | `data/srag.sqlite`            | Caminho do banco SQLite usado para as tabelas `staging/base/daily/monthly`.                          |
+| `UF_INICIAL`           | `SP`                          | UF padrão para gerar o relatório quando não informada via CLI/código.                                |
+| `INGEST_MODE`          | `auto`                        | - **`local`** → Lê os arquivos CSV em `data/raw` <br /> - **`remote`** → Faz o download dos arquivos nas URLs no `SRAG_URLS` <br /> - **`auto`** → Escolhe automaticamente. Verifica se eixtem arquivos CSV e faz ingestão **local**, senão, faz **remota**.                     |
+| `SRAG_URLS`            | *(vazio)*                     | Lista (separada por vírgulas) de URLs CSV do OpenDataSUS para ingestão **remota**.                   |
+| `NEWS_QUERY`           | `SRAG Brasil`                 | Consulta usada no coletor de notícias.                                                               |
+| `OPENAI_SUMMARY_MODEL` | `gpt-4o-mini`                 | Modelo para o resumo das notícias.                                                                   |
+| `OPENAI_API_KEY`       | *(vazio)*                     | Chave da OpenAI. Deixe vazio para **modo offline**.                                                  |
+| `SERPER_API_KEY`       | *(vazio)*                     | Chave do Serper. Deixe vazio para **modo offline**.                                                  |
+| `API_TIMEOUT`          | `15`                          | Timeout (segundos) para chamadas externas (notícias/LLM).                                            |
+| `API_MAX_RETRIES`      | `2`                           | Nº de tentativas de chamada para as API.                                                             |
+| `API_BACKOFF_BASE`     | `0.5`                         | controla o **backoff exponencial** (em **segundos**) usado nos **retries** das chamadas externas (Serper/OpenAI). A cada falha “transitória” (ex.: 429/rate limit, timeouts), o código espera esta quantidade de segundo para realizar uma nova tentativa                |
+| `LOG_DIR`              | `resources/json`              | Diretório de logs (JSONL).                                                                           |
+| `LOG_FILE`             | `resources/json/events.jsonl` | Caminho do arquivo JSONL de auditoria.                                                               |
+| `LOG_LEVEL`            | `INFO`                        | Nível de log (`INFO`/`DEBUG`).                                                                       |
+| `LOG_SANITIZE`         | `1`                           | 1 = sanitiza prompts/chaves nos logs; 0 = sem sanitização.                                           |
+| `RUN_LIVE_API_TESTS`   | `0`                           | Em testes/CI, mantém **0** (sem chamadas externas).                                                  |
+
+## Como Executar
+
+### Pré-requisitos
+
+- **Python** `>= 3.12`
+- **Git**
+- **Ambiente virtual**: `venv`, `conda`, `pyenv-virtualenv`, etc.
+
+### Passos para execução
+
+- Clonar repositório (`git clone https://github.com/PedroFerraresi/indicium_ai_eng_certification`)
+- Criar ambiente virtual e instalar dependências
+- Instalar requisitos de aplicaçãp (`requirements.txt`) e desenvolvimento (`requirements-dev.txt`)
+- Criar uma cópia do arquivo `.env.example` e preencher com as configurações do ambiente
+- (Opcional) Colocar aquivos de dados CSV dentro do diretório `data\raw`
+- Executar a pipeline com o comando `python main.py` para a execução padrão, ou selecionando um outro estado com o comando `python main.py --uf RJ`
+
+### Onde olhar resultados e logs
+
+- **Relatório:** abra `resources/reports/relatorio.html` no navegador.
+- **PDF:** `resources/reports/relatorio.pdf` (se xhtml2pdf conseguir converter).
+- **Auditoria:** `resources/json/events.jsonl` (eventos *.start/*.end/*.error, duração, run_id).
+
+### Problemas comuns (Troubleshooting)
+
+- *Erro: “INGEST_MODE=remote… SRAG_URLS está vazio”* → Defina `SRAG_URLS` no `.env` ou use `INGEST_MODE=local` com os arquivos CSVs em `data/raw/`.
+- *PDF não gerado (None)* → Verifique se o pacote `xhtml2pdf` está instalado corretamente e veja detalhes em `resources/json/events.jsonl`.
+- *Sem dados/séries vazias* → Confirme se seus CSVs têm as colunas mínimas (`DT_SIN_PRI`, `EVOLUCAO`, `UTI`, `VACINA_COV`, `SG_UF_*`) e UF correspondente.
+
